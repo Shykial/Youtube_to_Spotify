@@ -103,7 +103,7 @@ I wpisz poniżej link, do którego zostałeś przekierowany/a po zalogowaniu:
         data = json.dumps(payload)
 
         r = requests.post(f'https://api.spotify.com/v1/users/{self.user_id}/playlists', headers=headers, data=data)
-        print(r.text)
+        # print(r.text)
         return r.json()['id']
 
     def add_items_to_playlist(self, playlist_id, items):
@@ -117,7 +117,20 @@ I wpisz poniżej link, do którego zostałeś przekierowany/a po zalogowaniu:
             payload = {'uris': pack}
             data = json.dumps(payload)
             r = requests.post(f'https://api.spotify.com/v1/playlists/{playlist_id}/tracks', headers=headers, data=data)
-        pass
+
+    def search_item(self, query_string, type='track', limit=1) -> str:  # returns object URI
+        headers = self.auth_header
+        params = {'q': query_string,
+                  'type': type,
+                  'limit': limit}
+        r = requests.get('https://api.spotify.com/v1/search', headers=headers, params=params)
+        # print(r.text)
+        response_type = type + 's'
+        return r.json()[response_type]['items'][0]['uri']
+
 
 if __name__ == '__main__':
     spotify = SpotifyAPI()
+    # playlist_1 = spotify.create_playlist('Nowa playlista testowa')
+    one = spotify.search_item('Kendrick Lamar', type='artist')
+    print(one)
