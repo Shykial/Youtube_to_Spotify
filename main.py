@@ -55,7 +55,8 @@ def main():
                 part="snippet",
                 # myRating="like",
                 maxResults="50",
-                playlistId="LLdbdHlxCs0jEI6oPKl5um3g"
+                # playlistId="LLdbdHlxCs0jEI6oPKl5um3g"
+                playlistId="PL813690032BF2CE3C"
             )
 
             response = s_liked_request.execute()
@@ -92,7 +93,7 @@ def main():
                 #     nextPageToken = response["nextPageToken"]
                 # except KeyError:
                 #     break
-                yt_vids = [vid for vid in yt_vids if vid != "Private video"]
+                yt_vids = [vid for vid in yt_vids if vid not in ("Private video", "Deleted video")]
             for line in yt_vids:
                 f.write(line + '\n')
             print('jajo')

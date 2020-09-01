@@ -1,5 +1,7 @@
 import requests
 import json
+import concurrent.futures
+import time
 import base64
 import datetime as dt
 # from spotify_secrets import spotify_client_ID as s_client_ID, spotify_client_Secret as s_client_Secret
@@ -44,7 +46,7 @@ class SpotifyAPI:
         params = {'client_id': s_client_ID,
                   'response_type': 'code',
                   'redirect_uri': self.redirect_uri,
-                  'scope': 'user-read-private playlist-modify-private'}
+                  'scope': 'user-read-private playlist-modify-private playlist-modify-public'}
 
         r = requests.get('https://accounts.spotify.com/authorize', params=params)
 
@@ -91,7 +93,8 @@ I wpisz poniżej link, do którego zostałeś przekierowany/a po zalogowaniu:
         # return token
 
     def get_user_id(self) -> str:
-        r = requests.get('https://api.spotify.com/v1/me', headers=self.auth_header)
+        headers = self.auth_header
+        r = requests.get('https://api.spotify.com/v1/me', headers=headers)
         return r.json()['id']
 
     def create_playlist(self, name) -> str:
@@ -106,31 +109,107 @@ I wpisz poniżej link, do którego zostałeś przekierowany/a po zalogowaniu:
         # print(r.text)
         return r.json()['id']
 
-    def add_items_to_playlist(self, playlist_id, items):
-        # request can handle at most 100 items at once, therefore splitting into packs
-        headers = {**self.auth_header,
-                   'Content-Type': 'application/json'}
+    def add_tracks_to_playlist(self, playlist_id, *items):
+        headers = self.auth_header
 
+        # request can handle at most 100 items at once, therefore splitting into packs
         step = 100
         item_packs = [items[i:i + step] for i in range(0, len(items), step)]
+        print('Dodawanie utworów do playlisty', end='')
         for pack in item_packs:
+            print(' .', end='')
             payload = {'uris': pack}
             data = json.dumps(payload)
-            r = requests.post(f'https://api.spotify.com/v1/playlists/{playlist_id}/tracks', headers=headers, data=data)
+            requests.post(f'https://api.spotify.com/v1/playlists/{playlist_id}/tracks', headers=headers, data=data)
 
-    def search_item(self, query_string, type='track', limit=1) -> str:  # returns object URI
+    def clear_playlist(self, playlist_id):
         headers = self.auth_header
-        params = {'q': query_string,
-                  'type': type,
-                  'limit': limit}
-        r = requests.get('https://api.spotify.com/v1/search', headers=headers, params=params)
-        # print(r.text)
-        response_type = type + 's'
-        return r.json()[response_type]['items'][0]['uri']
+        data = json.dumps({'uris': []})
+        print(data)
+        r = requests.put(f'https://api.spotify.com/v1/playlists/{playlist_id}/tracks', headers=headers, data=data)
+        print(r.text)
+
+    def search_items(self, *query_strings, res_type='track', limit=1) -> list:  # returns list of objects URIs
+        headers = self.auth_header
+        items_list = []
+        counter = 1
+        for query in query_strings:
+            print(f'Wyszukanie {counter}, obecnie w liście: {len(items_list)}')
+            params = {'q': query,
+                      'type': res_type,
+                      'limit': limit}
+            response_type = res_type + 's'
+            # 5 attempts on getting proper API response as it may result in incorrect response sometimes
+            for _ in range(5):
+                try:
+                    r = requests.get('https://api.spotify.com/v1/search', headers=headers, params=params)
+                    if returned_items := r.json()[response_type]['items']:
+                        items_list.append(returned_items[0]['uri'])
+                    break
+                except KeyError:
+                    # print('Caught you!')
+                    continue
+                # try:
+                #     r = requests.get('https://api.spotify.com/v1/search', headers=headers, params=params)
+                #     returned_items = r.json()[response_type]['items']
+                #     if returned_items:
+                #         items_list.append(returned_items[0]['uri'])
+                # except KeyError:
+                #     r = requests.get('https://api.spotify.com/v1/search', headers=headers, params=params)
+                #     returned_items = r.json()[response_type]['items']
+                #     if returned_items:
+                #         items_list.append(returned_items[0]['uri'])
+            counter += 1
+        return items_list
+
+    def search_items_threading(self, *query_strings, res_type='track', limit=1) -> list:  # returns list of objects URIs
+        headers = self.auth_header
+        items_list = []
+        self.counter = 1
+
+        def inner(query):
+            self.counter += 1
+            print(f'Wyszukanie {self.counter}, obecnie w liście: {len(items_list)}')
+            params = {'q': query,
+                      'type': res_type,
+                      'limit': limit}
+            response_type = res_type + 's'
+            # 5 attempts on getting proper API response as it may result in incorrect response sometimes
+            for attempt in range(1, 6):
+                r = requests.get('https://api.spotify.com/v1/search', headers=headers, params=params)
+                try:
+                    if returned_items := r.json()[response_type]['items']:
+                        items_list.append(returned_items[0]['uri'])
+                    break
+                except KeyError:
+                    time.sleep(int(r.headers['retry-after']))
+                    # print(f'attempt: {attempt}')
+                    continue
+                # try:
+                #     r = requests.get('https://api.spotify.com/v1/search', headers=headers, params=params)
+                #     returned_items = r.json()[response_type]['items']
+                #     if returned_items:
+                #         items_list.append(returned_items[0]['uri'])
+                # except KeyError:
+                #     r = requests.get('https://api.spotify.com/v1/search', headers=headers, params=params)
+                #     returned_items = r.json()[response_type]['items']
+                #     if returned_items:
+                #         items_list.append(returned_items[0]['uri'])
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            for query in query_strings:
+                executor.submit(inner, query)
+
+        return items_list
 
 
 if __name__ == '__main__':
     spotify = SpotifyAPI()
-    # playlist_1 = spotify.create_playlist('Nowa playlista testowa')
-    one = spotify.search_item('Kendrick Lamar', type='artist')
-    print(one)
+    # playlist_1 = spotify.create_playlist('Nowa playlista testowa XDDD')
+    with open('yt_vids_list.txt', 'r', encoding='utf-8') as f:
+        items = [line.strip() for line in f]
+    tracks = spotify.search_items(*items)
+    # tracks = spotify.search_items_threading(*items)
+    spotify.add_tracks_to_playlist('7jL6SyXjlt1P0Rz9uDoo9o', *tracks)
+    input('yoo')
+    spotify.clear_playlist('7jL6SyXjlt1P0Rz9uDoo9o')
+    # one = spotify.search_items('Kendrick Lamar', 'Eminem', 'Rihanna', 'Kanye West', 'Mozart', 'Friderick Chopin', 'rysiek z klanu hehe xD', res_type='artist')
