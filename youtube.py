@@ -5,6 +5,7 @@ import google_auth_oauthlib.flow
 import pickle
 import time
 import csv
+import concurrent.futures
 
 
 class YoutubeAPI:
@@ -59,7 +60,7 @@ class YoutubeAPI:
 
     def get_IDs_from_playlist(self, playlist_id) -> list:
         IDs = []
-        print('Pobieram ID filmów z playlisty', end='')
+        print('Pobieranie ID filmów z playlisty', end='')
 
         # getting first page of the returned content
         request = self.yt.playlistItems().list(
@@ -93,7 +94,7 @@ class YoutubeAPI:
         return IDs
 
     def get_videos_topics(self, IDs) -> dict:
-        print(IDs)
+        # print(IDs)
         print('Pobieranie informacji o wybranych filmach', end='')
         responses = []
         items = {}
@@ -108,19 +109,11 @@ class YoutubeAPI:
                 id=','.join(pack)
             )
             response = request.execute()
-            responses = []
             for item in response['items']:
                 items[item['snippet']['title']] = item['topicDetails'][
                     'topicCategories'] if 'topicDetails' in item else None
-            # responses += [item['topicDetails']['topicCategories'] for item in response['items']]
-            # print('I got here')
-        print(time.time() - start)
-        print(len(responses))
+
         return items
-        # print(responses)
-        # for response in responses:
-        #     print(response['items'][0])
-        #     print(response['items'][0]['topicDetails']['topicCategories'])
 
     def get_titles_from_playlist(self, playlist_id) -> list:
         titles = []
@@ -155,6 +148,11 @@ class YoutubeAPI:
 
         return [t for t in titles if t not in ('Private video', 'Deleted video')]
 
+    def get_topic_videos_from_playlist(self, playlist_id, topic) -> list:
+        IDs = self.get_IDs_from_playlist(playlist_id)
+        videos_with_topics = self.get_videos_topics(IDs)
+        return filter_videos_by_topic(videos_with_topics, topic)
+
 
 def write_titles_to_file(yt_vids, file_path='yt_vids_list.txt'):
     with open(file_path, 'w+', encoding='UTF-8') as f:
@@ -186,17 +184,18 @@ def get_IDs_from_file(file_path) -> list:
 
 
 def write_IDs_to_file(video_IDs, file_path='video_IDs.txt'):
+    print(f'Zapisywanie wartości ID do pliku {file_path}')
     with open(file_path, 'w') as f:
         for ID in video_IDs:
             f.write(ID + '\n')
 
 
-def filter_videos_by_topic(video_topics, topic) -> list:
+def filter_videos_by_topic(videos_with_topics, queried_topic) -> list:
     filtered_titles = []
-    for title, topics in video_topics.items():
+    for title, topics in videos_with_topics.items():
         if type(topics) is str:
             topics = [topics]
-        if not topics or any(topic.lower() in topic.lower() for topic in topics):
+        if not topics or any(queried_topic.lower() in topic.lower() for topic in topics):
             filtered_titles.append(title)
     return filtered_titles
 
@@ -210,15 +209,20 @@ def main():
     # write_titles_to_file(choice, yt_vids)
     # youtube.list_playlists()
     # youtube.testing()
-
-    # video_IDs = get_IDs_from_file('video_IDs.txt')
-    video_IDs = youtube.get_IDs_from_playlist('PLmXxqSJJq-yXrCPGIT2gn8b34JjOrl4Xf')
-    write_IDs_to_file(video_IDs)
-    # print(len(video_IDs))
+    video_IDs = get_IDs_from_file('video_IDs.txt')
+    # video_IDs = youtube.get_IDs_from_playlist('PLFgquLnL59alcyTM2lkWJU34KtfPXQDaX')
+    # write_IDs_to_file(video_IDs)
+    # # print(len(video_IDs))
+    start = time.time()
     video_topics = youtube.get_videos_topics(video_IDs)
+    print(time.time() - start)
     write_topics_to_file(video_topics)
     filtered_videos = filter_videos_by_topic(video_topics, 'music')
     write_titles_to_file(filtered_videos, file_path='filtered_videos.txt')
+    # z = youtube.get_topic_videos_from_playlist('LLdbdHlxCs0jEI6oPKl5um3g', 'Music')
+    # for item in z:
+    #     print(item)
+    # print(len(z))
     pass
 
 

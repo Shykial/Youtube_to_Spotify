@@ -1,9 +1,10 @@
 import requests
 import json
+import re
 import concurrent.futures
-import time
-import base64
 import datetime as dt
+import time
+
 # from spotify_secrets import spotify_client_ID as s_client_ID, spotify_client_Secret as s_client_Secret
 # from spotify_secrets import spotify_token as s_token
 from spotify_secrets import *
@@ -129,25 +130,35 @@ I wpisz poniżej link, do którego zostałeś przekierowany/a po zalogowaniu:
         r = requests.put(f'https://api.spotify.com/v1/playlists/{playlist_id}/tracks', headers=headers, data=data)
         print(r.text)
 
-    def search_items(self, *query_strings, res_type='track', limit=1) -> list:  # returns list of objects URIs
+    def search_items(self, search_queries, res_type='track', limit=1) -> list:  # returns list of objects URIs
         headers = self.auth_header
         items_list = []
+        items_not_found = []
         counter = 1
-        for query in query_strings:
+        for query in search_queries:
             print(f'Wyszukanie {counter}, obecnie w liście: {len(items_list)}')
             params = {'q': query,
                       'type': res_type,
                       'limit': limit}
             response_type = res_type + 's'
             # 5 attempts on getting proper API response as it may result in incorrect response sometimes
-            for _ in range(5):
+            for attempt in range(1, 6):
+                r = requests.get('https://api.spotify.com/v1/search', headers=headers, params=params)
                 try:
-                    r = requests.get('https://api.spotify.com/v1/search', headers=headers, params=params)
                     if returned_items := r.json()[response_type]['items']:
                         items_list.append(returned_items[0]['uri'])
+                    else:
+                        pattern = re.compile(r'ft\.?|feat.?', flags=re.IGNORECASE)
+                        if pattern.search(params['q']):
+                            params['q'] = pattern.sub('', params['q'])
+                            continue
+                        items_not_found.append(query)
                     break
                 except KeyError:
-                    # print('Caught you!')
+                    if r.json()['error']['message'] == 'No search query':
+                        break
+                    time.sleep(int(r.headers['retry-after']))
+                    print(f'attempt: {attempt}')
                     continue
                 # try:
                 #     r = requests.get('https://api.spotify.com/v1/search', headers=headers, params=params)
@@ -160,6 +171,7 @@ I wpisz poniżej link, do którego zostałeś przekierowany/a po zalogowaniu:
                 #     if returned_items:
                 #         items_list.append(returned_items[0]['uri'])
             counter += 1
+        write_items_to_file(items_not_found, 'titles_not_found.txt')
         return items_list
 
     def search_items_threading(self, *query_strings, res_type='track', limit=1) -> list:  # returns list of objects URIs
@@ -175,7 +187,7 @@ I wpisz poniżej link, do którego zostałeś przekierowany/a po zalogowaniu:
                       'limit': limit}
             response_type = res_type + 's'
             # 5 attempts on getting proper API response as it may result in incorrect response sometimes
-            for attempt in range(1, 6):
+            for attempt in range(1, 100):
                 r = requests.get('https://api.spotify.com/v1/search', headers=headers, params=params)
                 try:
                     if returned_items := r.json()[response_type]['items']:
@@ -183,7 +195,7 @@ I wpisz poniżej link, do którego zostałeś przekierowany/a po zalogowaniu:
                     break
                 except KeyError:
                     time.sleep(int(r.headers['retry-after']))
-                    # print(f'attempt: {attempt}')
+                    print(f'attempt: {attempt}')
                     continue
                 # try:
                 #     r = requests.get('https://api.spotify.com/v1/search', headers=headers, params=params)
@@ -195,20 +207,54 @@ I wpisz poniżej link, do którego zostałeś przekierowany/a po zalogowaniu:
                 #     returned_items = r.json()[response_type]['items']
                 #     if returned_items:
                 #         items_list.append(returned_items[0]['uri'])
+
         with concurrent.futures.ThreadPoolExecutor() as executor:
             for query in query_strings:
+                time.sleep(.075)
                 executor.submit(inner, query)
 
         return items_list
 
 
+def write_items_to_file(items, file_path):
+    with open(file_path, 'w', encoding='utf-8') as f:
+        for item in items:
+            f.write(item + '\n')
+
+
+def get_corrected_titles(titles):
+    """Using regex to filter words from the video title most likely being meaningless for the music track title itself."""
+    pattern = re.compile(
+        r'([()\[\]]|lyrics | of+icial | music | video | audio | HQ | High Definition'
+        r' | instrumental | remix | edit | cover| live | [^\w\s.\'-])',
+        flags=re.I | re.X)  # gives 331 from 499
+
+    pattern2 = re.compile(
+        r'lyrics | of+icial | music\s*video | M[/\\]?V | audio | HQ | High Definition | instrumental | \bfeat\b | \bft\b |remix | edit | cover| \blive\b | \bx\b | [12][9012]\d{2}$ | \(.*\) | \[.*] |[._] | [^\w\s.\']',
+        flags=re.IGNORECASE | re.VERBOSE | re.MULTILINE)  # gives 431 out of 499!!! update 447 yo 453 yo 459 yo 460 yo 461 yo
+
+    new_titles = []
+    for title in titles:
+        new_title = pattern2.sub('', title)
+        new_title = re.sub(re.compile(r'\s{2,}'), ' ', new_title)  # trimming multiple whitespaces
+        new_titles.append(new_title)
+
+    return new_titles
+
+    # return [re.sub(re.compile(r'\s{2,}'), ' ', pattern.sub('', title)) for title in titles]
+
+    # print(new_string)
+
+
 if __name__ == '__main__':
     spotify = SpotifyAPI()
     # playlist_1 = spotify.create_playlist('Nowa playlista testowa XDDD')
-    with open('yt_vids_list.txt', 'r', encoding='utf-8') as f:
+    with open('filtered_videos.txt', 'r', encoding='utf-8') as f:
         items = [line.strip() for line in f]
-    tracks = spotify.search_items(*items)
+    titles = get_corrected_titles(items)
+    tracks = spotify.search_items(titles)
     # tracks = spotify.search_items_threading(*items)
+    print('yoo')
     spotify.add_tracks_to_playlist('7jL6SyXjlt1P0Rz9uDoo9o', *tracks)
     input('yoo')
     spotify.clear_playlist('7jL6SyXjlt1P0Rz9uDoo9o')
