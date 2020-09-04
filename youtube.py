@@ -1,10 +1,10 @@
-import json
-
-import requests
 from googleapiclient.discovery import build
+import json
+import requests
 import google_auth_oauthlib.flow
 import pickle
 import time
+import csv
 
 
 class YoutubeAPI:
@@ -13,14 +13,14 @@ class YoutubeAPI:
         self.yt = self.create_yt_service_instance()
 
     def create_yt_service_instance(self):
-        api_service_name = "youtube"
-        api_version = "v3"
+        api_service_name = 'youtube'
+        api_version = 'v3'
         credentials = self.get_yt_credentials()
         return build(api_service_name, api_version, credentials=credentials)
 
     def get_yt_credentials(self):
-        client_secrets_file = "yt_secrets.json"
-        scopes = ["https://www.googleapis.com/auth/youtube.readonly"]
+        client_secrets_file = 'yt_secrets.json'
+        scopes = ['https://www.googleapis.com/auth/youtube.readonly']
         flow = google_auth_oauthlib.flow.InstalledAppFlow.from_client_secrets_file(
             client_secrets_file, scopes)
         try:
@@ -28,7 +28,7 @@ class YoutubeAPI:
                 try:
                     return pickle.load(f)
                 except EOFError:
-                    print('jednak nie to')
+                    print('Tworzenie nowego tokenu')
                     credentials = flow.run_console()
                     pickle.dump(credentials, f)
                     return credentials
@@ -40,7 +40,7 @@ class YoutubeAPI:
 
     def list_playlists(self):
         request = self.yt.playlists().list(
-            part="snippet",
+            part='snippet',
             mine=True
         )
 
@@ -59,19 +59,19 @@ class YoutubeAPI:
 
     def get_IDs_from_playlist(self, playlist_id) -> list:
         IDs = []
-        print('mowie do API', end='')
+        print('Pobieram ID filmów z playlisty', end='')
 
         # getting first page of the returned content
         request = self.yt.playlistItems().list(
-            part="snippet",
-            maxResults="50",  # number of items can be from range (1, 50) inclusive
+            part='snippet',
+            maxResults='50',  # number of items can be from range (1, 50) inclusive
             playlistId=playlist_id
         )
 
         response = request.execute()
-        for item in response["items"]:
+        for item in response['items']:
             # print(json.dumps(item, indent=4))
-            IDs.append(item["snippet"]["resourceId"]["videoId"])
+            IDs.append(item['snippet']['resourceId']['videoId'])
 
         # while loop to get all the next pages by referring to the previous one,
         # breaking from the loop when the response is None - meaning there is no subsequent page
@@ -84,16 +84,17 @@ class YoutubeAPI:
             else:
                 break
 
-            for item in response["items"]:
-                IDs.append(item["snippet"]["resourceId"]["videoId"])
+            for item in response['items']:
+                IDs.append(item['snippet']['resourceId']['videoId'])
                 # print(json.dumps(item, indent=4))
 
         print()
         # print(IDs)
         return IDs
 
-    def get_videos_info(self, IDs):
+    def get_videos_topics(self, IDs) -> dict:
         print(IDs)
+        print('Pobieranie informacji o wybranych filmach', end='')
         responses = []
         items = {}
         step = 50
@@ -101,6 +102,7 @@ class YoutubeAPI:
         start = time.time()
         for pack in item_packs:
             # print(', '.join(pack))
+            print('.', end=' ')
             request = self.yt.videos().list(
                 part='snippet, topicDetails',
                 id=','.join(pack)
@@ -108,13 +110,13 @@ class YoutubeAPI:
             response = request.execute()
             responses = []
             for item in response['items']:
-                items[item['snippet']['title']] = item['topicDetails']['topicCategories'] if 'topicDetails' in item else 'None'
+                items[item['snippet']['title']] = item['topicDetails'][
+                    'topicCategories'] if 'topicDetails' in item else None
             # responses += [item['topicDetails']['topicCategories'] for item in response['items']]
             # print('I got here')
         print(time.time() - start)
         print(len(responses))
-        for key, val in items.items():
-            print(f'{key}: {val}')
+        return items
         # print(responses)
         # for response in responses:
         #     print(response['items'][0])
@@ -122,19 +124,19 @@ class YoutubeAPI:
 
     def get_titles_from_playlist(self, playlist_id) -> list:
         titles = []
-        print('mowie do API', end='')
+        print('Pobieranie tytułów z playlisty', end='')
 
         # getting first page of the returned content
         playlist_items_request = self.yt.playlistItems().list(
-            part="snippet",
-            maxResults="50",  # number of items can be from range (1, 50) inclusive
+            part='snippet',
+            maxResults='50',  # number of items can be from range (1, 50) inclusive
             playlistId=playlist_id
         )
 
         response = playlist_items_request.execute()
-        for item in response["items"]:
+        for item in response['items']:
             # print(json.dumps(item, indent=4))
-            titles.append(item["snippet"]["title"])
+            titles.append(item['snippet']['title'])
 
         # while loop to get all the next pages by referring to the previous one,
         # breaking from the loop when the response is None - meaning there is no subsequent page
@@ -147,24 +149,56 @@ class YoutubeAPI:
             else:
                 break
 
-            for item in response["items"]:
-                titles.append(item["snippet"]["title"])
+            for item in response['items']:
+                titles.append(item['snippet']['title'])
                 print(item)
 
-        return [t for t in titles if t not in ("Private video", "Deleted video")]
+        return [t for t in titles if t not in ('Private video', 'Deleted video')]
 
-    def titles_to_file(self, choice):
-        with open('yt_vids_list.txt', 'w+', encoding='UTF-8') as f:
-            if (t := f.readlines()) and choice:
-                yt_vids = [line.strip() for line in t]
+
+def write_titles_to_file(yt_vids, file_path='yt_vids_list.txt'):
+    with open(file_path, 'w+', encoding='UTF-8') as f:
+        for vid in yt_vids:
+            f.write(vid + '\n')
+
+
+def write_topics_to_file(video_topics: dict):
+    with open('topics_data.tsv', 'w', encoding='utf-8', newline='') as f:
+        tsv_writer = csv.writer(f, delimiter='\t')
+        tsv_writer.writerow(['Title', 'Topic'])
+        for key, val in video_topics.items():
+            if not val:
+                topics = ['None']
             else:
-                # yt_vids = self.get_titles_from_playlist("PL_eFXywmQJjE62uK1pwJnNdpCvuQfX2lR")
-                yt_vids = self.get_titles_from_playlist("LLdbdHlxCs0jEI6oPKl5um3g")  # my liked items playlist
-                for line in yt_vids:
-                    f.write(line + '\n')
+                topics = val if val and type(val) is not str else [val]
+            tsv_writer.writerow([key, *topics])
 
-            print('\n'.join(yt_vids))
-            print(len(yt_vids))
+    with open('topics_data.csv', 'w', encoding='utf-8') as f:
+        f.write('Title\tTopic\n')
+        for key, val in video_topics.items():
+            topics_string = '\t'.join(val) if val and type(val) is not str else val
+            f.write(f'{key}\t{topics_string}\n')
+
+
+def get_IDs_from_file(file_path) -> list:
+    with open(file_path, 'r') as f:
+        return [line.strip() for line in f.readlines()]
+
+
+def write_IDs_to_file(video_IDs, file_path='video_IDs.txt'):
+    with open(file_path, 'w') as f:
+        for ID in video_IDs:
+            f.write(ID + '\n')
+
+
+def filter_videos_by_topic(video_topics, topic) -> list:
+    filtered_titles = []
+    for title, topics in video_topics.items():
+        if type(topics) is str:
+            topics = [topics]
+        if not topics or any(topic.lower() in topic.lower() for topic in topics):
+            filtered_titles.append(title)
+    return filtered_titles
 
 
 def main():
@@ -172,13 +206,19 @@ def main():
 
     # choice = input('wczytac z pliku? ')
     # choice = True if choice[0] in ('t', 'y') else False
-    # youtube.titles_to_file(choice)
+    # yt_vids = youtube.get_titles_from_playlist('LLdbdHlxCs0jEI6oPKl5um3g')  # my liked items playlist
+    # write_titles_to_file(choice, yt_vids)
     # youtube.list_playlists()
     # youtube.testing()
-    # video_IDs = youtube.get_IDs_from_playlist("LLdbdHlxCs0jEI6oPKl5um3g")
-    video_IDs = ['Ete2s_dBTx4', 'RGP3fSKj3rA', 'xdq6Gz33khQ', 'cnPlKLEGR7E', 'FXEF05owEPI', 'Qu3dThVy6KQ', 'FtL-BQvL_Eg', 'LC8R8Ce_Js8', 'aR-bMX9gYsI', 've2pmm5JqmI', '_q-l6Cn6WxY', '4NC3Uuvbt8M', 'V04DCsNKimc', 'SzyZSMEkxvk', '_HA5UtcSKck', 'V5a7cVf2NeM', 'GCJ9HoHNzqc', 'qRCEdWQ0f4Q', 'dwiQi6PiYmk', 'jbYohbyal_Y', 'xaRM8kvS1m0', 'eglnCWVilmM', '3NfKVQuIGS4', 'bJSn4Ld-QdA', 'B1Dk_9k6l08', 'vvCkmcoEolQ', 't31yuqW7Lus', 'itG5PfQscr8', '5M3IhWYixEk', 'NlVw_ebo_us', 'qm4tMfbYaco', 'n-RtJOfFlZU', '1nfuYMXjZsA', 'PUqBrnfDHw4', 'ywDr_m8aIyE', 'AYcuiEnztIM', 'hKZvmwCaoTg', 'A73HQwEct-o', 'v7dkDMrQ58M', 'A2klTfzyf-w', 'x2Y5-4kLb5I', 'YljVTlfyyz0', 'VlXsHxRc1co', 'OAIhoLIf3Bo', 'ag38DswwR7k', 'szQdvAzGNwE', '99ygg4vwFBU', 'g-y_0Zk385E', '2Kw8FX3rhdw', 'bXJNqfinDAk', 'EmGpsCGIjpU', 'fbnVMSYVbvA', '-dGEieyuTu0', '8VczRPcEQuY', 'OFBZbFGHSa8', '5DDNmAim7wk', 'JSf9LVG_gDc', 'qKRPb6ADa6o', '1lmpGxQnjqk', 'MlrTfCHK5ZU', 'qlzVPauUgw8', 'hC8CH0Z3L54', '9gmWygO7LiI', 'DyQdur0P0zA', '3egre1kRvys', 'Od8pM-rbLOc', '_wYtG7aQTHA', 'fJtadFQQH1Y', 'lmKavdebSxE', 'Iy7xDGi5lp4', 'f7LsAtckkBg', 'LDU_Txk06tM', 'rSNeAxtXXMc', 'By_Cn5ixYLg', 'X41fa6JtWPw', 'oHyctwgE6m4', 'trKrbxnX3Nc', 'rZhBEMpbxC4', 'WHho3_ZRKZ0', '3WLDMjGDDU4', '7SqL_IbVkCQ', 'CWVVAeEioLo', 'Aaz_FyFyAXs', 'Gmpey0EyR0U', 'TMYN4PgAQV8', 'EWClAt1kEfg', 'dULLOz5SkrQ', 'cru5OfQWjSE', 'ocGiulPm3IU', 'OSwi-PkbSIo', 'oT6VL4x-rHY', 'FxQTY-W6GIo', 'WcZU39JDPx0', 'Y6RCQ4zkJkY', 'ZQdlCQmzUAM', 'MbsLn9CI24o', 'qfrncUJcfas', '-QnjC8Zz4Lg', 'EeWS4wwR8Lc', 'e8viVZGXNNQ', 'CKu2zcU6zC0', 'NE9w3wipnKM', 'QW2Di1D6kEY', 'GsETbBqRsRw', 'PkGwI7nGehA', 'HmrcDUgD_ao', 'A33I0YhSmDo', 'nwNz7ZcZDvs', 'hsmpOcuxEG4', 'fX-eZclUFQo', 'Evoybr7Gb9E', '2t527tuxFC4', 'M4LYBtjNPCI', 'b_U2fAYg-MM', 'NjqT8IOQl4Y', '43g3v9bUJ30', 'Nmom3EN2X4A', '5eXP6RuuaDk', 'R9zd0yl1K1I', 'rnyegA8AGIc', 'yCxwmH3psxg', 'ZKBU_7G4pIE', 'LlU4FuIJT2k', 'bOcsPI2o51k', 'rp9DkhMFRvo', 'xY1lm2aRU98', 'sVUjda-7DUM', 'vUTI4bPdlgE', 'UMCGOAGb4Y0', 'jdJ5OKxoLtA', 'htxWT9PjEY0', 'qxwBtzzRyH8', 'LGke2xzYoPY', '0XJQ0o36wkA', 'PVbQrvlB_gw', 'o9zRQijCN5w', 'JSXGagNzNLw', '_3bDP0ZCtyA', 'ISbJCAqxQzY', 'KB4_WIPE7vo', 'hxT9lYoWnYs', 'YYKMoZnuTJE', 'Tz_1Nj6yHMU', 'ancaTkW8o0Y', 'b03U6BYF9L0', '5z8hiJraF2s', 'r31Vv2puFqQ', 'lr4MmmWQtZM', 'g7rsPCAwT3o', 'BzeIIh2Iaxc', 'ZiB9JDjTYqE', 'Khm50J7V42w', 'tT8VnqKlT78', '_vkBk_6YvIo', 'VRJmcxCrAOA', 'dLyH94jNau0', 'Hi2tjMLVpdQ', 'BBDoclIy4_g', 'dvfEVQleqHw', 'JTTMxOrp5Yg', 'p83wPuOn65U', 'Zzx0d3pZbdA', '5ExnAzN98go', 'c1KnANMyupY', 'RLnA25dVzrQ', 'sPssGP4nNnw', 'kYgarGQnfJ4', 'xrfBWnZLM6o', 'aStnZFHXU8U', 'X6iJ0hPpGec', '2YJYepEAGpY', 'LKjK4b4gYIA', 'BQ0mxQXmLsk', 'HCjNJDNzw8Y', '6gb2RDLEvNg', '56KYMMGudcU', 'pubWL689y9E', 'p0CYjMoXilo', '43gm3CJePn0', '3M_5oYU-IsU', 'wgiW1uFZYr8', 'B9ScUkps_Gg', 'qwefKf87M8I', 'fE0CGfLTriA', 'j_G0xpMSoVY', 'J52VfTSXKms', 'pcJFPqepwug', 'TlmT54keGPI', 'oTsaWAcEOhE', 'R37NLADXdvQ', 'lM53DfPYtqg', '6Lyeb-HWi78', 'BXaKL7l4BmM', '9frFBq0LXGA', 'Xrbqsk-21wQ', 'WNsckph8C_s', 'FSmwmQnPMqo', 'Nw5scBZlkh8', 'nZ7rJwtuE08', 'qHSStN_fYs8', 'ajEgsnoibEM', 'jVWq6Bpd8Lw', '1SfQmVZIH28', 'R1g07RpTPFE', 'hZkVylPutmo', 'hZrYjnOD7Sw', 'QuIT_bNCaqk', '8zQeKZz5r6I', 'nzJxM6P8ArE', 'dwR2vXpqyYI', 'oVME_l4IwII', '1tixQ6c4K9o', 'CCIR5Hcme8Y', 'VwNsdcAXwE4', 'LCFz3isPdB4', 'QFcv5Ma8u8k', 'RwfJ1f3RxHU', 'j37o7kagU_I', '8cfliPZ3sss', 'yynZyj4OWNQ', 'wg7Dxj6efeA', 'JYWGHof1fe4', 'DHgC2Ru7_MQ', '1ExuxDEXWgQ', 'u2jWhaQKh4M', 'RM7lw0Ovzq0', 'at9FUc2exS0', 'NXsgISeLFD8', 'kWUQbhbqvqo', 'w8kI9lGDSvU', 'l4Z5wrwVDDY', '3XW-XdDe6j0', 'g8FkODpdMfQ', 'zUlwVNKCGBM', 'gYECksBV3po', 'QDtOvkxmfxQ', 'A2FsgKoGD04', 'R-fHTqRlsO0', 'Xw-LPFFe9sU', 'Yd1MBzz29lI', 'yXf5lNKpicQ', 'AFA-rOls8YA', 'eyTy8BhJ_28', 'zEmQOLkuvgQ', 'nFw2JiWhTUk', 'Y2tjuwLbziQ', 'VcnNMBwyeYU', 'f7rRi0EUHiM', 'f2SsEz57d4A', 'ofyyJWHnEPM', 'aMdDWIxU1-M', 'zmAMeDRz374', 'UeG1ftTmLAg', 'lFos3m8S-ms', '-U0AFQbfv88', 'vS9RoWZR61U', '-mYaIbBd8Qg', 'gBqWbgk8NI8', 'mz9lIvI9Qkg', 'ThbDz6nENzQ', 'gnmQj3vH3VY', '6viVwazlYMM', 'cBGY2886Ihw', 'gOAqkdGbPoA', '-dRVAb-8N80', 'RJDGRca0ero', 'zNgtyUqmY1Y', 'otUx070Mnkc', 'HD3R_StF1iU', 'GztnE9xIqrk', 'pdHuR8wG82A', '_2cpCXz9nKc', 'U2l-Xf37yzA', 'djf5yVDHg2U', 'lXFcZ16b-QE', 'Eqah8QrKXzk', 'hddAPNIKb0Q', 'H0Tu20CjMY8', 'Y4t-wZY3KK8', 'tc560LIfRI0', '3jEslQgvBvY', 'L7IQlO3_FK0', 'GMbn7JY9D1U', 'jcVmvT3JkwE', 'fsF7enQY8uI', '2QFKinwOlK0', '0scUJ841i20', 'kb5tnkVGZUQ', '1cQh1ccqu8M', 'k2ah9CtlaEs', 'zOIk-Ddg1E8', 'UlCr1Or0He8', 'f9zaJuxTNgI', 'kmZmCkccX9o', 'T-xokZ5HyKI', 'HwXHokADYBQ', 'ozY8ynPJ6-c', 'HcG9gK6hgFE', 'k-Q6m8XxMVg', '76Cix7yVqTA', 'MgV164oxQBc', 'Wp8AWCqm0GY', '36D1KknrBTo', 'y6120QOlsfU', 'xaMrlJPQ8GA', 'I4X8uI75JCI', '1NZNJRXh6IE', '_Ci6LhAmYJk', 'pkgdIRpUlWw', 'PEikGKDVsCc', 'tLksISrKtO8', 'Sn2bHdqwrJE', 'K5iooaB246Y', 'IiH8yviPLAk', 'i5l0ZQ0BJhg', 'hDdk5BbgYK0', 'TIwRDnVyJ4E', 'eyK8dQH-Vh0', 'tkeaJ-sIX7I', 'OmKbGOARXao', '71aP7yPPQ0o', 'nppKPgdc_u0', 'Q0aOsDkvHsw', 'PdedCma4btg', 'ijt-JVRpI8k', 'uO9bKnkXD_4', '_CL6n0FJZpk', '7ydBgdL5R08', 'jYODF_5r9v0', 'XEccQjai88s', 'otCpCn0l4Wo', 'nkJA6SYwa94', 'zZNOuddwnO8', 'nUyLnjgGumg', 'sNPKvm17n9U', 'RgBDdDdSqNE', 'qDi0ESsjiNo', 'TcpFOP_ERK0', 'Df6stcwuAn4', '-N_RZJUAQY4', 'vf2g2S4GS5c', 'v1-2K_pCWmI', 'e91wUgXQb9o', 'dJ6301NOl-s', 'duKL2dAJN6I', 'WzhW20hLp6M', 'WsqdmqRgrIc', 'YO_oc8UB-dE', 'iCIAbQP34KU', 'QcdRCVW2foI', 'lRvYTfVVSlc', 'PlCpQkpx7JI', 'kZ7kY1H2RFI', 'TCGSoYsGFuY', 'dKSJN3WWR3E', 'KwTuTNjBn9g', 'JTWCqVvz-kA', '9S1OVRU13aM', 'jnwtFCLxL0A', 'xlSorIrKUY8', 'thII0hbsvoc', 'A7-2d3NuPtc', 'kflq8IJAImY', 'xxNgYRoH0Tg', '0poLG5N8gNA', 'NVbH1BVXywY', 'TJG4aEtKeUw', 'g_vUB-lyVII', '56_ujRFFgUw', 'pDadATr4j5E', 'X6WlNHdtRr0', 'B7d3I9UGFuI', 'RvVfgvHucRY', '_yE_XgoWBso', 'L4ml6oTNt_c', 'QapjTCGV7GM', 'ZJbQoXPzC4g', 'HNDjTdHC8SE', '147NycRUfX0', 'JCruERbg624', 'xwW1cfa_OYw', 'lgmrqZ9SGpY', 'pc0mxOXbWIU', 'kLBDuWvcy7U', 'GW_fdXHOWp4', 'kpaGy9eBl4k', '_fC53l3jGAc', '_6UMP-Vgo8w', 'TXAoghzJzK8', '8pcG0Zh5Gew', '5qUmov3y9x0', 'LHCob76kigA', 'FfhdKbzav3k', 'O5WaQA36IoE', '_srvHOu75vM', 'XAAp_luluo0', 'IPwkbzrnswo', '4PI8Zlx_oA0', 'nCGqBfp5RRk', 'DOvE7XhNNmI', 'p4FA9506t8o', 'EoFfHPvL3jw', '6Fx4VqrmHyY', 'L8cPgAbSSE4', '2nP64e6RcDw', 'GlV3N_NmzQA', 'hD9VrVES2To', '43RZjrhwtwg', 'oY2nVQNlUB8', '0eQBxceFbTg', 'r3LDNe8cduA', 'T1vW8YDDCSc', 'ikNjunpCqWU', 'qM_wWX6IzRQ', 'a6u6BLavDUI', '2dHZ48YSN2E', 'WvK25Q5iepU', 'A1TWOt8XMMs', 'XjBgRWGBPfg', '1-2olEk5NBc', 'ji11t7gjBto', 'ixTddQQ2Hs4', 'UIy-wfUdkk4', 'YfQkipx7V2g', 'bDjsy106vYw', 'G_18hrRKVXQ', 'Kz2jXA3F4is', 'rC94LdemdR8', 'FG_Lv9wf7l0', '1QuzIXGacHY', 'UGOGvAQKSXE', '8oj3oI_Mr50', 'JaGzEne3DNk', 'YB60RVnMmas', 'abykt0PRM2Y', 'W0JnnOzKAKg', 'V-csw3fJT10', 'Zzc_Bw2LwYY', 'TVoZ0MQj05o', 'mL6IhZHItS8', 'gMlUy9Y6BnQ', 'VgVQKCcfwnU', 'BHSg2GRbFfg', 'n6AINqHS3DU', 'wMO-snYfrFk', '0L94MUKR3P4', 'f6GIYbQ-Ad0', 'mnAHsSv7B_g', 'ew4aMb6EVxE', 'N8GgunjEJA8', '6k0OYOt7GDE', 'VufDd-QL1c0', 'Y27ey39dRYQ', 'np5bJERhFlM', 'gCYcHz2k5x0', 'AWi-81ZYdH0', 'qMj4cDmjHwA', '2gONTG2MaWw', 'hp-cJG_rnLo', 'LDaenrfaSj8', 'lzc9MrWdOiw', 'C00yx1dkhwI', 'cITCvGXaFDU', '3vZ1Pa09eA4', 'aydTG71grVU', '4pC8z-fTW1s', 'wb7kPaM8cfg', 'nqbFPN0SkLI', 'CvQO2od8nR4', 'MZxtgUoGzMQ', '0fmA9mVIOuo', 'sxY35vTUZjg', 'F1T2EK5y6-8', '-FAwbjIqdFE', 'Me7Tm_NL_hY', '68E53lcUIKE', 'XtMS0IckUuI', '9K4hgHT2X3Y', 'sOJirsz15sA', 'v1GbLqP3LxQ', 'oYk2y5FKRYQ', 'lYkq54gHBnE', 'Fo-TdqdcwDk', 'ejsVcTI88r8', 'QE5FY3vrgj4', 'HDC_TDEw5LU', 'OHnKzCbtm5Y', '8VG46OntHAU', 'fekQFwrsIEg', 'GmosYBt9Ykw', 'oOm_2dGzqp0', 'ALUEMUAr3vM', 'MABMQy8CCNc', '3swQjk1VtNQ', '8LwYP_Ico7Q', '_ICd0V-3DSs', '4w5WTe_n0nE', 'IKx_95rTuBo', 'seFiWCttBxQ', 'nwN6dPNXklg', 't6ELNEe0_3Y', 'wJM90poG0gk', 'CLRBYhd7e4Q', 'y_NUatVH2l8', 'gAV0jTQZ64E', '84NwnSltHFo', 'IL7VMSTatAA', 'b5GmvRmB_rU', 'ik83Ty--7z8', 'uWPmwtCERZY', 'wZ_GOwLJH1Y', 'LNS1fabDkeA', '0ZZquVylLEo', 'rVTwgQ76l-g', '0GxU2gXcsE8', 'dJkBHZNt_aE', 'xAXSYO68Xmk', 'Fkn-IbbEx7Q', '0Ar0muvq5Qc', 'VmxQ1t0B-ko', 'VMKzBLTEuTQ', 'lg1VWU6f0gA', '2xuY254TKjg', 'Ekt7p9UhePw', 'YgP77JfIeeI', '29Y2DAeerYU', '_LBFSL1fDFs', 'E1NvXQea_sE', 'PMr_boZmj8g', 'XQcStsJxnOc', 'Bh6LFitHeyg', '5KA4tvuTTJQ', '3DvVSn1FAsM', 'DIZMK5YphtE', 'll0v-CNCUwE', 'bf9lF1ZiEHA', 'NrXqzw61wRA', '_4Uzxw4NX8w', 'FQ4d4bXeC8w', '7615V9i8yNQ', 'WNpL1buYlBA', 'cuMSuZEncsc', 'hvpV_chBleU', 'n8bTQAOz2SI', 'XhBdn_QzI7c', 'DvGrMw-Cc5s', 'lp0wKdJQ1IM', 'K6UrfPbM-78', 'IH5wAcggsKA', 'e4PTvXtz4GM', 'yYYqXY3L2wc', 'atxm3fIdrw0', '9mI8bIoR3z8', '3W5RhHPE2po', 'S_7j09RR4Rs', 'tz2ugeKyJgA', 'npXd2zIYcfc', 'b_mn_3mxvGw', 'adYkcqcQpiM', 'nJf7ZWizng8', '0xn1DZ1FnS0', 'hqgZLIj-eGg', 'huh4GEPKYt4', 'SRcnnId15BA', '3x5yWkZTQkw', 'AszunvWv--U', 'k0WbP2uLJPo', 'a0OYpox6Md8', '1mqqkEakS8o', '2P-kPabiUl8', '-nbjX85K-Dw', 'NWuy9Wjoxb4', 'exllWqTxnMg', 'h1N0icLu51U', 'Ckyiwct2wUA', 'dqd9fFFkynI', 'MC4RxYkS-vA', 'cwaUWasO9gI', 'PD79HJC5EoY', 'rHY4qQ_EocE', 'gbFPamyJjO4', 'OHHYmHaoYWI', 'Bb4GfbR98EE', 'g1lgUwHyKQQ', 'NrmREK2N5Ik', 'omo6g8j-L3s', 'EMjKqhd9IEs', 'xhTA-ZV0uzM', 'P2SsIYEbCio', 'BlhUt8AJJO8', 'wyl-xgRw8pI', '4KetqQhhWqA', 'ToYG5LEXi-A', 'Jna5kXTCo1w', 'Lhzdi1lES3U', '-HuJW5SNhik', 'LThcFjna1xM', 'KK1LrUhZBUU', 'xqbEyZxc0xo', '_edDfAsRC_o', 'L1VfIL86YmE', 'dKSKmMh3-WY', 'WaAu4L2cl4c', 'WVmGJ3tOFdE', 'xyhaz9mKcBg', 'RuOxCa-KWao', 'bFlUW1zs15s', '4JOAqRS_lms', '0t8yDnyOaQ8', 'luVhnfFy5-g', 'hqd2jfD6dsc', 'i93C4OJ7gUo', 'mKVCg3EZqDo', 'OefFywyoWq4', 'xXJ9kUmF0YA', 'IWu9o5zrj3g', 'JxX57U1fXFE', 'GhxqIITtTtU', 'kBG9DKdtxLc', 'MLNmT7UUP1A', '3tl5DjUdLpA', 'bvBMCKCFxX4', 'OoP03g5I1t0', 'xmI7NcxZG6E', 'BCyiV3YrdCQ', 'f0YoJgi_M5U', 'MvyMkl8oZO8', 'i-DIBgR5n_U', 'EWMh923MR2A', '8vxIFBwIWpw', 'sNqMAC5PrVo', 'JhYPFF-LCaw', '6hZ13gSjycQ', 'fCF0nRUeRDw', 'AxzssbI1j3w', 'nCoYYsOUte8', 'Ru2z-mYuyug', 'ZaX6C4Akdog', 'IOFdUVS9_u8', 'wXwOn05-2Fs', 'PIyxD2Hx7G0', 'V_dEsqpCCmY', '3fz1LWoRZDE', 'QATUk7g8vGs', 'akMvqXWRM_Q', 'PLLNqGW4j3g', 'NeEqwj-L4Vs', 'TLBeCHEhAUg', 'G45tb0g2KqY', 'Uou3oFp1JwM', 'cJlbXtqDOnc', 'tTpQhA7KXQI', 'RGi7wdv9HxQ', 'wR0RM6BwKug', 'asZTnNM17XA', 'nqf03SH9quU', 'qH-Tu1CxrLU', '7ildCKEsuIo', '84cvzujLFq8', 'Bf2rIihw7YI', 'bLUsL9_YlPE', 'V5ul3UmgAw0', 'CK963DVi6pI', 'Mb7CcHDJ-t8', 'lpnkwFjL1AU', 'L0szPkk6bbE', 'emsnf60X3zY', 'eqZsIWK5MJQ', 'taLy5N_R_FY', 'JO0fp9Djhyo', 'xHDt_llIiUw', 'qfb5DbClAtI', 'nBuZfhPq2Lc', '7QBgCfKfXqQ', 'RZPoJe2R7EE', '0NNMvnQRlc0', 'BEG-ly9tQGk', 'n8EpMF9yNj0', 'rv0eFMCAph4', 'zbIrATQZ7Gw', 'Q4vSfMBaF3Q', 'frepEQG2G24', 'GvnT0OKgXn8', 'dklJBrO29VQ', 'XiVssFlahWU', '_unP9kmq98I', 'yJrYw929rBM', '7eHOMyCZYvQ', '29cULg9_7y0', 'Ydx6jNlePFE', 'YHyq8CsOHqg', 'aBphSGgWdhc', 'wLCc9h8kBWo', 'Fs-5Qwu8NWA', 'JUDpFALXNvI', 'WAvqeOC6SSw', 'NKaxBOYPyZ4', 'qOb00_x5C-s', '7oiI8FIjhAE', 'Deu-ayVcT-k', 'ae69-9llIhQ', 'nlEKS5ZxFd0', '-qF15VmBu9o', '0TC1k_lVrnA', 'YdveTdW5m7k', 'DTh-rRN8CxM', 'unOwIpj4U2c', 'b2OcKQ_mbiQ', 'bx0SWRM2yUk', '9c4Rc6o8npQ', '89KdaOgxtBQ', 'LSdVI6QlR1Q', 'tug3y1TpnuU', 'l7PD4q3goR4', 'Ik4xziHsC_I', 'UR0bfVfqMds', 'yIbfvKMrwsY', 'XIX359TaOJ0', 'mR14SAZ8sDk', 'jixAewUp8AA', 'FSEEUmNZ0Og', 'dNQ_6zSxeVQ', 'LLLeyQCL2sg', 'upNqepYqmyo', 'vbnE9o6XjeM', 'qvk4Mt1wRYs', 'K3LN0043nEI', 'XE5wUeo4Rs0', 'jyBdGATRSpo', 'CACAmH4r1fw', 'tjQo476cub8', '_wC-dJ_uP94', 'soQgMJwryxE', 'W_c8AFemzno', 'aszVD73SgvU', 'eMNaZ6Z9zqw', 'KxGUKyotCBc', 'MIVN0SOYwwU', 'l0yYzP3QOCU', '5JumhCXqpko', 'bxW4M3aY7Gg', 'icbjhGUDxYE', 'uIs8cK-jZ3g', 'NIsa-vfXV6Q', 'kL-8jB5DZ6w', 'SfrOWJgAMmQ', 'y-7U0HTuJo4', 'BzpIB5TJ7LI', 'AbQOYTZoJFk', 'FmGl0-UqmKI', 'aQGsMSsm274', '8H_HFubHeAc', '5hyTUqWlc_s', 'CdXs5rtrISw', 'gn1BGgFraAI', 'KfkR5o_bcSg', 'If89fzVkEeU', 'jWu8lO-WqAY', 'FAumiKSfO10', 'PrjsybNunyg', '-3J1ct5xWmU', '0AqnCSdkjQ0', 'fVn3AvMtVOY', 'MpRdNp5KngE', 'TL6zXOJjipE', 'SvXhwv1oGmg', 'CBN3pvAMGSo', 'i_xFOmYxKYw', '9Qx3PiLRM94', 'XOEewpOjaKg', 'b0ko1Qhxk0s', 'nHLocCZxu_k', 'YH2UUUTOyno', 'qu6_ORN9iDA', '2X6TbcrA-30', 'VfhjnF8Zi3I', 'hVZFEEwZznI', '6667Gyn9uh4', '0xFaM-aMcTE', 'h7TF8msoB-s', 'dJNIP0pp3iE', '7RhgSC4JIKs', 'NV7xJ73_eeM', 'uOmQDNJ2PpU', 'tf40R9qKPc0', 'Q9wUbG0cbe0', 'Rylamy3vQTo', 'xoqGGmFLu9s', 'q9FgPd04XMA', 'GCHpal_Tznc', 'X5u6738YnmA', '7prqCf4opo0', 'w0pnTm-KK9k', 'Jy0T-55dru4', 'W2LsklY2LWE', 'WjWzDOZmmxU', '1B2rAr8PMJ0', 'Bs3itUesSVY', 'kL5tPf-Qr_c', 'pWuZ0qUiGy0', 'vM5dAxVsugw', 'ZrJ_UTXhvhA', 'r_WgfdIq7fc', 'Oy3eQbdZXcc', '1fC6RP6tZ1Q', 'uds8tSSFZQ0', '5k3Y9S2tb4w', 'w1yifbOWPmU', 'tLWqr9J4UXE', 'w16n37SbVn8', 'iKefz4AikRk', 'GKVxHb6lBm0', 'xi7dZSMYIHg', 'K_gHa2x2OQA', 'eRvk5UQY1Js', 'Q0rwJA3g4XI', '24wN2_KkxkE', 'DRCMdnCr6h0', 'zMyc81cCmZQ', 'A2_hPWdHvZQ', 'qIVDxL2lgN4', 'mOHkRk00iI8', 'SolGBZ2f6L0', 'RyyN0MZDZIk', 'xPSxUxyS-Jo', 'TYmX6XK_2a8', 'XXJGsIOEFQ0', 'SB_0vRnkeOk', '0KxA3IMntRg', 'Fkh17pul-e4', 'cDdV-4Z6jsU', 'lBUJcD6Ws6s', 'HawhVlJAJdI', 'AYhIGldRUO4', '3Sjoke6uwj8', 'WtLpR_xa4eE', 'vPiNehXstYQ', 'Xbs6eMxa5ds', 'm7wJ6zvxwS4', 'ee_pfRtFGDw', 'tuZlnVgLTVY', 'xZ0aksbiiXw', 'HWAEY7ePX-s', 'y8WaMAllTh4', 'h-jQXc837as', 'dq_91rU-K2U', '7P9MYL1detc', 'nioOUIIIUR8', 'xzlO1vmN93g', 'YoB8t0B4jx4', 'DgeVTzeZoFE', 'XOTWEZULdYU', 'TuAX65lYHBs', 'FUH9P9Sbp_4', 'RTtXGfCUQsc', 'KP3DtJr1Ef4', 'H0xwj3H6z-Y', 'H5N9bumg-Z8', 'l8kjhmIM9JM', 'WHIv8sFIDAQ', 'qat9gR5nrpM', 'QTrWo47hPBY', 'XS6ysDFTbLU', 'VAChhCLAT98', 'b8K4JkTWhhQ', 'JiIXw8mDyLY', '5Ce_954P20I', 'cvME9BLYgsw', 'gqijbANbiXY', 'I7mzct3v4Gc', 'oToRkoRnvQ0', '7tgu2yQRiRM', '1DvTIVv3F4s', 'm00uUa43n3Y', 'OMa1L3gUUtE', '0fg-1PtJllw', '6HZ5V9rT96M', 'B5XZWiJy5y0', 'JOzLPO9MVUs', '6KNCkuUOwoQ', 'lWIk5d0XtU0', '_miAKNN_5v8', '5NrpggZuSGY', 'qfKQ2qpicSs', 'UIxogaBqf7I', 'biNkIUrtR2g', 'OyeH5hioOtg', 'ShSmedgMQf0', 'sJKdAsgwK2Y', 'Q8PE1ow0zlA', 'QPTUZF7FsC0', 'k2k8nwwsmuI', 'G4h9gjbW9zU', 'nC-M4H9Tm48', 'mCcNZqG-UIc', 'm8fU_S2Vpb8', 'WxU-cQvmi-k', '1eR56TymJ3A', 'Al81Qjlg0Dw', 'EMwqUjw7wAE', 'PE0ScjTo6-Y', 'zPXkZHMbZww', 'odr85NrIHik', 'lHh-UWcxRCM', 'Bi6HKPBFKBM', 'L5qpJwe2-7M', 'gFDZ6C5cPVM', 'NwBVrF6AWoI', 'JGesPcBa9RU', 'p66rxHQK0qc', 'UtAoq_RlXM0', 'AEx6ajEeGVg', 'HZagth257Ew', 'jv2pPKRcwBk', 'FDbnVH2qM50', 'aicMqok5qUw', 'eIQOunZflbg', 'zyqRNn1ouMU', 'iP5X77tVSr4', '-J8jlTCk_KY', 'M8mK6jCelbY', '0ef1VD9RZ3o', '56R3hU-fWZY', '8l7MVL5eubw', 'ESVHUZ2l0cI', '8kXkhVAnUKg', 'kTZowFefH1s', 'D5_ogU4Jzt4', 'LUaRQQRuprU', 'ehuYp9BwEQo', '_Hf13K3UW1I', '3Y5SAM91oG4', 'sLKnp5mjaSI', '-EsRcQbPI2w', 'XMneU2r06Mw', 'cv-nl8S6IOw', 'n4gIJf7poiU', 'AnPqh0NFO4g', '4Pwx9Hi9HAk', 'jCSE75_zHlU', 'c9Bz4a6Zs9E', 'LQRPQgZ0qB4', 'fu2ewxq9p0Q', 'wtBC9l5XvcY', 'Dh1lsPg8FBk', 'A4ebYObvRwc', 'pz9kmHTJs94', '62RQI4LJYy4', 'WxHhfeMCfew', 'konSbC3WC1Q', 'XWzzcZwnsDM', 'TGBYa27XQcE', 'bWbyfpRebio', 'hV9byrnDOjo', '6CJ1pbOzVCk', 'XkMIemXcuPY', 'Il0UaYtZGX4', 'lK1vPu6U2B0', 'Trx_sSHk5A8', 'KZ0WWL1atmE', '0YPv_HHzMA0', '-QHaiTRec_8', 'nHv0oUccMY0', '_WEqmaPmG28', 'WbojNQFpltI', '4XPgxcep0Os', 'Fp_SQJWPBjE', '9N5KyjM5v0c', 'D7U1pOtCRXk', 'PgJQ6LQ8x1E', 'YrqY3lIS-QU', '9ocGo98C3Bo', 'uH6PwSfxURg', 'oFZ4aG3Wavs', 'pnUNzPh_k2s', 'rps4disA-28', 'Mw1SXYbDkTM', 'MbvePryw7ao', 'PciUghjM1_g', 'DMU-x5r4Ex0', 'qGOjFBgyhYw', 'jidziKYG9jk', 'TaX72x2ZcWU', '0i2vLdosiGc', 'tisZZXne_jU', 'vwhAILUGH8g', 'imBBFSRbG_o', 'C37QmDjQt6w', '1HjMeBpI8yU', 'voqYX8_VjvQ', 'XINOAX6bdLs', '_9BaOLzcM6E', 'hRag_WvnFNA', '-Qc8W74zzZM', 'DGNuXFW7Mlo', 'OsrQrUqYjm4', 'biWwwMAHQjE', 'kK2F2BCWx7Y', '_qkyIxt1P_c', 'crs_vZWz99Y', 'Ff4kZEDJKuk', 'AZ5ISjk7Uqs', 'JKVhdq98_wU', 'xLwxrvNb0G8', 'w7gWMgN1NGM', 'IuoI6ESP9aw', 'dDuxFSpwj0M', 'ugsC_HuG7Gs', 'gqe1M0VABo8', 'AYOis02tujI', 'WRRD9P5jpX0', 'YvovoVp4Xys', 'rZS3jWt1fFA', '-FCkDwaFutg', 'XRPD0nzK4y8', 'jZTQJ6MuLj0', '4YG37ZZjP2E', 'GGhxbTvlTTU', 'TmhMsGZjFjE', 'Hnvoz91k8hc', 'v5NoetQu2fY', 'po-e7hGn7Ls', 'A8TSBw5JiWE', 'M8RkWmfPFQ4', 'd2V1RfKXm-8', '4Lki_IeM6bQ', 'IncwcDlYS2s', 'SeAZNz0av6M', 'PiLARApA4lE', 'CPRLNYfD2OA', '-3qLnfDZqG0', 'bQWfonVpnCI', 'ETovnFLL84I', 'WungxDZ7N5Y', 'kRvzjN1kC6Q', '-DyQUsphT_s', 'OnPBp8M3Lqw', '6xvlzvNkj2o', '1V0Pt-aSPQE', '2m_-rmwwP18', 'A1CLpkxp5jg', 'KEHdmjKyqrM', '-eNOd8EgZOc', 'vB96oyVaNxU', '9W-g_W8BNqg', 'uV5YjAOHeGs', 'lczYItqp2y0', 'RH0CRI54bZc', 'QW6Kn8Jd5Ws', 'd0qqiRhtdgE', 'oHTrLy-JQKU', '4hfY86ZxFVw', '4I2r-NRgUtU', 'ZhriW6gRX2I', '767aJi5zg6s', 'sCTsXNMiT5g', 'b31lg6DTgJw', 'pbVfmmsdk1c', 'eaKagvtsozo', 'QML1ThqZUt0', '1_7v5nGY0WU', 'cdLxfo5J3f8', 'GPbJtdF-pqU', 'lrCzAGPwcIY', '5QHbjU4TMDY', 'k88bN2suAEU', 'BCygqYoju2E', 'B5oxHfW0UnI', 'xg1GM3t-FXA', 'p5L7q3rJ-b8', 'PEUxoib_Dh4', 'xdupODY60fc', '_x8ML03pDwU', 'rMKFwRlnDXU', '3tR7wgfZTaE', 'HlEUH-O3oeQ', 'cIimJgSshTg', 'xSzAk5kTtGk', 'f13aHUuf4kw', '0dcgYYrR3R8', 'xbAdXbHR8lo', 'PmpBD_MoeAw', '5c0jEC5bhQw', 'ES4RLsPIkSM', 'KSUda_qg5UA', 'XbanPaeJuGc', 'N69GNk0ToHw', '9qfuFDs157U', 'rDpTn5lLSvM', 'Dn39RUPQuMk', 'jimpHbxJUhs', 'NAgko8fAWAM', '2S0E9-wuOwk', 'YuOBzWF0Aws', 'HvUGNMLyFVU', 'orXJugCFe9k', '08x7ZAJrKbU', 'M1v7LBE2uNo', 'eZ1-K_r2uo4', 'oE6hQdHXE7Q', 'FTvNBWm1Jdc', 'qN8lAyws7Us', 'PozGtGI6LSk', '8sPj0Ic8KQ8', 'JxEKVkw0rpY', 'AcGKVK_YV-Q', 'KHRleh3lIDg', 'GRvW2urHsQ4', 'cTIX5ape7Zs', 'PUKMUZ4tlJg', 'DK-MvrNa6_0', 'a1RZMSxMU5M', '2uCEEiwQu2o', 'EAgfrE28gpc', '-wOB5U2RlB4', 'VJk2jROtzGg', 'puvT3ea_4OA', 'BxLFc9Bhb1Y', 'AnSIluEVwVU', 'absh5Zisx7M', 'xs-p_fWtXvM', 'aDXbPXgw0oU', 'rj8DfvGrZX8', '35ADsxxsp9w', 'phCSXKqKQuo', '7IFB5phTzko', 'LqN9Y-4c8kE', 'DZT7JuJGcFY', 'raAmw0M3FgY', 'vObXAY6rEAQ', 'zvz3jBO9tW4', '_LwLOKYS6hA', '_58F8PFbkIE', 'Wkd2LYmQigs', 'QZ07hxBpp60', 'OeJXAxTaW7E', 'zKD9t6S90AM', 'EBPITSi0KLE', 'ViAT_L_xtQ4', 'EGhEm-um_ME', '0hCfDZCABrM', 'zEWCZ-x7OUE', 'Umjp7jCn6UY', '78HKZEjILEM', '002aSprmUyw', 'PSYxT9GM0fQ', 'I7TK_8RiVj8', 'ybzFHk2wRxs', '8Sbizs-qAwY', 'qwY69TJBkhw', 'PWV4hDSQxJg', 'FStoecoZa88', 'EWp9CQNNfaU', 'ebkOwXKm0Wg', 'Y0IL_4oUxsw', 's851gQ2Jo70', 'LY5KZASn1Ls', 'Q1JzSRMX3hs', 'y-B7bWCYGMw', 'jgBtZ1d5Al0', 'ShDQrtLm9fU', '9hCsXDKik9w', '5Xhz9ZuNTN0', 'XRK_jY5HMEg', '79BqB_i5cFs', '13dwv4f92j4', 'jUZ1VGwErvI', 'nRHBmHBlNm8', '_23urgpeLqk', 'kDSi5pwf-Kk', 'r2Qq3okzhqY', 'q_ZdsUp4Vb8', 'SloGz17A2g4', 'ehTXTsEkBjg', 'q7QiDwR8WHc', 'a5uQMwRMHcs', 'HiKavSjPNDo', 'XavmcL_eCpA', 'W6xH6z9ORns', 'wffPwC8E7l4', 's8vNKEsYVD8', 'XbGs_qK2PQA', 'oeIuz_kHNFg', 'D9DYPLpE1wk', '9O10qPHFiOA', 'wBvmr8Vn_w0', 'Eckqsxtmxms', 'Ew-24Ad6t-g', 'EZS7AI4rHk8', 'v-BdUGDsmA8', 'KTwn-zm9xjw', 'dXrLy6Abdis', 'qIM-w8ji9zQ', 'fpEDOWzX5jc', 'iU0iM87Tt-k', 'WGN5xaQkFk0', 'oU2tKYvDH2g', '2BLF4S5hU4A', 'lb6g0gmB2Uc', 'kCLg3-1fGUM', 'bHJXgWF4iNw', 'TPigTayUVBc', 'yGV0VmS52gI', 'ZepQ436JUks', '6JIfIdPnSas', 'unvdglndF14', 'r-jcqVgkVO0', 'aJ9FsTjl-3c', 'XxnFWPf7EFo', 'J7swFGbU8Gs', 'B72hTOnW_aI', 'pPTpWrg6mSQ', 'QdyRbztc3nE', '0fawOoAR1AQ', 'JbByTqN7_Rk', 'Na1-Bhx7BdE', 'MKZyPJFhT64', 'Yuac6vhrpok', '0Na_UvxfTzc', 'J_Rhq4Qp9Ww', 'qfE2oWo7N9E', 'dG4xaLn2W6s', 'x4ZZxSKc26E', 'umqhXlSCqMw', 'CrTIH5iPLI0', 'rvg4ucT985g', 'qgy0gNrEDMg', 'vy9hn3ZlGH8', 'diJduxmUYuU', 'ZDXXi19_7iE', '2b-tr0-m0hI', 'nle3w1FZrtI', '8r5VMkZFC-Y', 'lzP8aLoL9YM', 'ElU5Dl05sPQ', 'zmnoloFsHe0', 'iHtsWHXfupg', 'm4nwVIb1hRc', 'z5krIRu3U7Q', 'C0w5CY_Rgl4', 'MbwYdJypU2c', 'B9qwXnOb6O0', 'ARkglzjQuP0', '76cjErMeTQs', 'LA7eS41lJCs', 'mG2SwRrOKCg', 'VtGObBkrptw', '44xEl8LHoug', 'Xk_SAx7XQIA', 'TdlKm8lYdhI', 'u53uS6iALYc', 'WFyX9-c1AiE', 'CO7ehgUlF84', 'fbnmOd5Cgus', '3f8_8M8avgo', 'BH6orotGh9w', 'kSjOSPGwuJs', 'oFkwB9IPxPc', 'PR0332iGSZg', 'K0n1TBcdXnc', 'fAAE4KBGCEI', 'Of7fzQeHl94', 'CuSqnxVeZDI', 'h9MHNRyMk_c', 'GyhoSzLCH-4', 'L3gMaa7C0jo', 'VYfMrARBf_0', 'tO1Qat9e1aM', 'LVqdfROiJ74', 'NVne8YEO3mE', 'fg4v-AA5mcc', 'G9M4B8pFSR8', '1M627H_CFK0', 'CbWAQB95XdQ', 'UYe3eZV9SF8', '8CYs3YSlSRo', 'URmK3-Atm6c', 'sUPaysR7ZKE', 'mLxwpoLmwS0', 'uLTo7t1KK2E', 'NlmezywdxPI', 'bKcCMVVvUTs', 'mFFfjzD-MLI', '7tc_v6NP90M', '4OUu1L7ucNE', '8f2PeZbDbUA', 'J429SWuLbWA', 'pa_ZrbdQn7Q', 'XMuA921R_Ao', 'jB5agIm5u3E', 'GFXnZO6cckY', 'NF-kLy44Hls', 'I6SxQ73jZCk', 'LBQzsazB23I', '_V8wXrxdmn8', 'mFDGxxok-KA', 'LaLavPpOfv8', 'VQUH_RkYzpM', '-j8bM4Ywtuc', 'aBZ61aO4--c', 'lV4v1MjnHeU', 'fo1s7LTd5WM', 'uIglBLfhPbY', '3WDgv8FZlpc', 'ySkGRy2lCJ8', 'BpqNvskS_kM', 'e7STuUqrp2I', '0bYmCu4qY84', 'Rx8en6VnCy0', 'olTKdnDiEmo', '6zgWU5yMGaM', 'Ms1tsY1ykgo', '5KsabeJ1UEk', 'GAuhUTzNwiY', 'ssH-Ic5tytk', 'lmU1nv_vWxc', '6y7IO3bQyV4', 'tD9cKOMLwWU', 'GMFZoLoLOxs', 'csNKlRfrK_w', 'XHAZWsxfjj8', 'rrtq-xUOTEs', 'grz0Jz0KhTg', 'GqQZCGMf_PM', 'ZlVkx9ETfBE', 'DaSC3_C4xj4', 'P1HRt12yyaw', 'N30FHxwFXg0', 'tidTg2xiFlA', '-gsIsTaA3N4', '0xvcXkKzd7Y', '2xHKsp51q1I', 'cVrZGNYjih8', 'rI2YKkrv-ZU', '5QuYx99p48o', 'xpZk_cmZk3M', 'UwtVWxjhFOk', '-JJEqIgwHYI', 'Jrlco1JFtHA', 'VC4ORS5n9Hg', 'Mz_jCjSfyiY', 'wUEUuurc9u4', 'SWeNDWI7JIg', 'tdFAGcC7uqE', 'KeKyqc_wXNc', '_RTIlVXKfyY', '0itOCgJtNVU', 'd0kvYukdctw', '7Jc49n23TUg', 'an15UWrE8bY', '8J93zBXlnnI', 'GNdO6FhSoio', '8f0d7Rps4Q0', '8aqzhqhpoSs', 'tmYdrdez74w', 'NyGv8XtKJc4', '_JTqtFPPiU0', 'wIPGNoFjBXQ', 'izQ2l3Y-mpI', 'BjAugogQzzI', 'NFQCYpIHLNQ', 'IAHB6THPeVM', 'rMsfPzqeShY', '-UC9teaucEg', 'g19T69_DPFA', 'IJNR2EpS0jw', 'OM_bfV91QQg', 'iUa5P0yKVyM', 'qX1PoyUKBwk', 'ab9176Srb5Y', 'qJ4BrKxTX38', 'TGxr6ARpO_I', '_bvfQQTB62E', 'r00xI6Vp1YI', 'CKyNYg5ms_Y', 'A_gBMrc_FKA', '0NUX4tW5pps', 'UJyQgnJ2-5k', 'z5rxY-WhFNw', 'am9BqZ6eA5c', 'fFHEuro8NfU', 'KluoI9ufXiQ', 'ZmWfGOVq7rU', 'yUJeeGaJgd4', 'ZPuPCjB37Ls', 'E-LwOnqC5PY', 'obnpkZb8Jgg', 'aKvyl155op0', 'IccHUmxOvuw', 'r9RTPceTwco', 'EU1K292BTNA', '359na4NeaVA', 'qfqFp0HrTbk', '1h64gMoWvRU', 'BNLGuyPHWt0', 'n343b0jwXc0', 'XgifXv4gWyA', 'vmCm1LO5-JM', 'dqkSgC3nLdE', 'neg_rWq02mk', '6C5H4BxT3ak', '9wlAwB4l514', '80Kbqot04MI', 'UF7r2UHytRg', 'scZKeGf3jfg', 'P2C0mURn3ZU', 'ed0xPzLFIH0', '1XR8S-L4V1Q', '1ekU15d_jEQ', 'ZZewdKg8x2c', 'zt5KYD2QgSo', 'ocx4am1ydkc', 'pAg44asDKME', 'vSNapvrROo4', '7Hp6GlSArEs', 'b6Gdg9hhOas', 'vdaBc15DotQ', 'wjsrsuC0gtw', 'uOseVtPBSlw', '8OWqeC4MykA', 'JDTNu6byTGI', 'dCvb5gk1HBc', 'Q-DZ3ldi63s', 'vumA0w9TcKQ', 'me4E2LmqN_M', '5jGKnTCosRk', 'T-4zMIhGqdQ', 'Lkbi5rBO06E', '-DUQxMG9eS0', 'pVGPbH5Z7uQ', 'aaM5ZA_qJC4', 'xm1eM9G0dmU', '3UjuYtgMDIg', 'T8r3cWM4JII', 'kxopViU98Xo', '8MbMcHQBk9s', 'IStyuJFSUio', 'E3IMyfwQQs8', 'aDrJZT8AIv4', 'gN1rmr90ybc', 'XFVmDO-_U-4', 'RMAwSBpgfHc', 'xyXVRW73X1Y', 'Cj79qUlrIeE', 'QWgWoEbjVWQ', 'tKvhiyuMvNc', 'GDWPIfMfja8', 'hhj7GqzdNyQ', 'u-eNRZJdrhQ', 'BvqQMSQ2FYo', 'PJhXKn9qNyE', '6pe-9Rtyv-c', '9R6I0RvYquc', 'ht8HmD2FfHU', '1ILjVHGwgrc', 'sh1A86yTxx0', 'JQcN7DdeF7M', 'D4JEEylqOVw', 'SJ97VNCGhDc', 'FIrgxUElouU', 'IXcpW41GJJk', '3i9UFKS0j1U', 'WUlXYq-tm-U', 'ycaOrnqRMgI', 'MvgGtKFg8EQ', '7hgP1NuSEpw', 'rn8bfpaM3TA', '2vM-IOA1ZFE', 'PPTY62mAebU', 'Hrtj6Qy0SYE', 'pPa9820CZzQ', 's_3m1hhhrHk', 'Ix5iWN39i9I', '3a2bna6VkVw', '182a0LHYgFk', 'EIQmnRR0OOI', 'iC51tqILv4Q', 'Dk-SgPECyqw', '2d1lgRTdU8o', 'kA4ND23xACo', 'BzwN5cuGwVg', 'yXj0QtxK0Oc', 'Ax5cA_jPy1g', 'eTEMJMeOJ04', '6Rmkeg76lAI', 'xA07WN4pjgA', '_tHj_hZgzAc', 'aWTl2LKWMAM', 'ExN6Cq7Ghnw', 'Yz1FLFS0peU', 'tAEDNaK0Xm0', '0WRhi8XsW-w', '62LBxKU6Dik', '7EhzmELGZJw', '5REpz-fjYQQ', 'cG_t4TAL0tE', 's7bi0EiMgQY', 'pPeiQKmoaUc', 'h1zowv9JkiA', '5NV6Rdv1a3I', '5JE-3dLaBnY', 'NjN0yNrQwIk', '735R85zYEhA', '6XiCLQFcIuE', 'LyX5hUloQvA', 'XhXsT29hl3k', 'BvI7qE0_AIs', 'J-kPLadnVk0', 'Z5KoFJBVM1Y', 'SSsKgkz4g_k', 'XtqeZVdkTy0', 'fh4FLyVe9oY', 'Id1NRMyocww', 'hL8HfTSea1I', '3DBgnzeSwm8', '1x_mV6jiChk', 'Ya79u18mrbY', 'uqdIjgL5nqw', 'hWzFvOXLOFc', 'r-u7jyE0Z_g', '7g7LRZD1R1w', 'suclflsrCf4', 'XUzpRH2sBdQ', '6B6fnIAZYlw', 'wtdhepMDI1k', 'IoQeej5EowI', 'N0_V4IGW7eA', '4DxkfeQnfoE', '2gDTTq94qgg', 'pJMdw6Qxkb4', 'lT1gGPKwMfc', 'Swp0nEKLpOA', 'x8u_eir43dQ', 'PGQnP7mhygs', 'aUO25orCVCU', 'DPYkG3K_nUo', '55fItBPB_vo', 'MjSP0xrWbDM', 'GgK0Bb2m9-k', 'HzdSFwAP-RY', 'j9w57eLaJyI', 'c3kNqWSwBYw', 'lKSLOHAPUwc', 'FA3ThBhC_bU', 'ojO8GPKB4vE', 'KTwYnATiX9A', 'ghAhyZ0Qqww', 'FmoGiJ3hXOE', 'XCex1N9jDbU', 'QpfTS9b89fY', 'AspJ1AXSUfc', 'I262E9iIwFg', 'k_f7Lf_7Ifg', '8Ujm65fXOjU', 'nY9XeN0vn7s', 'Cn2XPRPmYF0', 'jdg8Sp1HUKM', '7eBR1DG-l5A', 'wESFCBYdVdg', 'rYzSXdPhJYU', '_JXBg4SHH3k', 'QRD4Z8YDLyo', 'IBQ8FVCyHpE', 'nffn4FBM-CA', 'Kf-4S2rzNXQ', 'rBVX0lHU3rk', 'bSV_Y5bsddo', 'PUHqngh0-dk', 'IrTXyp_8u2Y', 'GLiymPOCazs', 'v6J-hPy5YfY', 'YyI-hoTv3gc', '5QIINiayGQQ', 'pM64VpR4quE', 'bE1MyQhqaj8', '1QHA24sqkXE', 'qxzQQUdbF6U', 'MuVw6r8BSvU', 'mn9d-LtKQMc', 'NPH_sSSNQt8', 'wLOFohOPIWc', 'BMikFNNyhSk', 'MncOPAn5ReM', 'Y61Zqr2lzAc', 'TIBqmrtE8yw', 'z6kO5iCKlnI', 'baptiaNEGeY', 'M8LqLXhqJ6I', 'KG1-zHhDYIg', 'mwNqCPEUFWg', 'aDo1i1s79Pg', 'c26wbjK8xFc', 'YMw8lsfOxzU', '4KbKouBMH5A', 'AAxAGbnDpzY', 'hf8mDKR3ky8', 'ilYjan_JgXo', 'VFV_FBjmOdA', 'dineoAYOys4', 'hYrhu6gUJ8A', 'PNm0XHONApU', 'NuEmuSPZGOc', 'ofMYIxEKe2M', 'pVP1XHefBI4', 'X7pkJUtvBOs', 'JBuRfysbX2A', 'wBoIVUooy4E', 'K9_yE9f-8Pc', 'vY1mS1LQ2fU', 'f-pXzaTlY2s', 'RPDKzn5C7-8', '52EY1BER8mY', 'dEkZco25xFQ', 'gOMhN-hfMtY', 'MlxhwV8_5Bc', 'xGvQaMlyetI', 'OWg2SAUoGoQ', 'lbLfFWxuDzs', 'MProCOhQyS4', '-pYwB2rNemI', 'nD8DqMgRdJI', 'JnMg2_drv-Q', 'jPViXkPub-s', 'VM8dVMxe9YM', '4OZpSUJfSGw', 'zxgsfNlg1XY', 'p-vfhojXpVE', 'F95-xAu3AW8', 'M3T_xeoGES8', 'ttWQK5VXskA', 'fzHFUpVmnJE', '60S46nVfdDw', 'Ajy1TfoSMMI', 'lTq7DE6uAoU', 'MiQwENy-k-U', '2x9GVrjAQOA', 'D3TOCoJdLRY', 'OgGReFlLdOY', 'RjivIV2iPqI', 'jAz0pfub85Q', 'xj2irAm9rto', '9MPgm7b1bLk', 'FG74PkCF3LY', 'Zki9ts8d0Do', 'mqA2pVL8ZQQ', 'uaHQwU6vUSE', 'M52EhiX-A-w', 'nh-PB7AxPDg', 'igIcPozO98o', 'YHNr-wECcVw', 'VSLDKuPrWjs', 'ilCHEPdsQAQ', 'detvLIpJBQk', 'lYK-vdNbQ78', '66r6W2mJ2aE', 'rU6yEJ_kwbU', '8G-9ZnT_IPA', '6oLkmU_ln6k', 'xHmjTHtJ1rM', 'K0YNJuVbumM', '2YwWAmN87g0', 'oUAYyf3TMGA', 'X4dsEH_BZ_A', 'XC_TylVDsT0', 'zcBjQt5_riY', '4tTU4f_lNsk', 'IyhS4ipTv18', 'KZWIMXPfpac', 'MnsDxCB5VAY', 'Q8BLoieJ2dA', 'MkDK8O4k1Kk', '80xfhihFu8w', '9LMM979GBQk', 'uoUe_AnzR3g', 'da1yGEP4K6s', 'OvIHYQ-_RcI', 'gAjR4_CbPpQ', 'qEYpc-dPJHI', 'DmeXoSebVqs', 'G1xQotKVbu0', 'e8eZNuuNvK4', 'yxOsTYSPOOw', '4UxsMjXaVwg', 'OhBexqoAFho', '40SyQpQhAOg', '0UDqe5HBUWI', '6rdrv1Lpn58', 'HFL8cxoEK8M', 'A1vYD4j-BiA', 'mkgjikSYY7I', 'bjeoRr1zcWM', '3GRa7KXxb4k', '1Gt_RkWYR-Q', '5GUNXoOe2qs', 'okT3_Or69EM', 'q-NDbru6A2Q', 'vVCrXGoFlMY', 'mgkbjf9NXMI', 'J6KR6TydL_c', 'nIPowirEXmg', 'YMkxB17leKs', 'H1kVe-0g0M0', 'IByWTQZ5jPE', 'M589TaM4MTc', '_-Ol8086cBg', 'xh479zpStzU', 'OYX3YXnwF9k', 'mNzcn3DfH4g', '-ac_SeXV0jY', 'rNFSwT5UQA8', '5wYA1SwSAyY', 'zzCzkeeag0w', 'kWxgorapAco', 'F0_sElSOvRY', 'dQ0_gn25E6U', 't3-AO88-A3g', 'F_N8TYXp16Y', 'mK6oTMkL7Cg', '5U7LFqyEYQs', 'Ah6nVOMPOTI', 'OwR64kh-s6I', '-AUjxDgAOvw', 'VsabFEisZ2Y', 'bTtf5mPa1NE', '1q2GTSk5bko', '_LeW8NekA-Y', 'hsPct5lFKVc', 'hByTYV4Tlu8', 'X5lW6vtZiac', 'vvVtKHWxd90', 'RGUIrULEi34', 'jJ_ye9aq4z4', '2K-yl1sl1ag', 'WfbnS_qThdM', 'fEj4yECaf_I', 'I4dsYEZb638', 'EPea4YvuRoE', 'YS2rlnBTbYE', 'eX4FEYT9aME', 'WKfkkfejF4g', 'GYC1U_BQkFM', 'BYBSA9v8IRE', 'OQ5CrW2Mbpc', 'tPQp-sFmbac', 'PPoN-a3Quww', 'ghPWKIq_I8w', 'iCuXBtBHoIE', 'nqiG0taCRyo', 'Uw5vZEqrIcU', 'aiUJmbMQ-Ho', 'aTCYLfhDZh0', 'TqgIhSl-Gs0', 'vGwRiizJIVc', 's2rC1fEQAcY', '2l-OlSs0TR8', 'cXrJUc2oqM8', 'zTQKGFxCZmc', 'hwBUbgigEUc', 'oL738n7rlHY', 'b9y8ZUeBMmI', 'S4t2zaSmppg', 'lzyFol4Vm_o', 'Z_HBBlVVIfk', 'hzxyIKnjlvU', 'jQzCCow8WyI', '8hvvk_Exw_s', 'pnDRU1sur0c', 'ivhtWeGc40o', 'UkD2kZoo908', 'F3_k3VuLTkw', '9amumERr9as', 'jcOKrxIqdxM', 'be7nHzijyGE', 'V0_6wGJrzS0', 'QW6jfFWFr7A', 'EVJHZqFpSk8', 'bmmVLvyD1ME', 'CTKNm-bABLg', 'uHqNqVOuujw', 'ZRLmiBGTk4w', 'NH3WFR6YcQM', '03YIDug1dBQ', '7OiyRG-lQTk', 'BSyt7UA-Kdc', 'KFutq8ry_og', 'Qaprr3gxABc', 'yYeX57tBBTY', 'FusTGze_B3I', 'B8brfjoqi2o', '-UXTyj-IXaM', '-rNrEH1FakU', 'KwyOfqbP8JU', 'aPHk8gaxEPU', '7J74S8-UeEs', 'yoOv2xmfjRs', 'bLMh_gwIqKY', 'Uci-AqsYBn8', 'wu8ZO4-6_AE', 'U7n8gb7B4uk', 'dmCAqd3P9Wo', 'hfuIBMhuxUc', 'f5Y3SstHdkQ', '7s2q-gprFVU', 'q14f_pWwwT4', 'WLFx7wFz-xE', '3Lu4CBMvY5w', 'FzAWPzAlq74', 'm6v1lDdImqU', '5nJP1z7MWVk', 'z8vtycFVq34', 'KSOKyMWg2Uc', 'U31NoM7TIF8', '_LA1xu0Qdy0', 'KVFanQ_cM8o', 'Ut29k42GDMc', 'FEFNaGtfO58', 'kS2P8faQa6A', 'zWgGfpWE27A', '10pLjoHK34A', 'gYSHsPFDjTg', '3sEXEqIkrjQ', '3AEVD1AN-AI', 'ooOL4T-BAg0', '2d9XMr2Zdzk', 'uiMuGhZyUZU', 'pIirY8nIo1g', '908CA2XdjJA', 'MmEJNnMZhao', 'smijMygfCFw', 'd7T5laoezhw', 'srGyYrFeykw', '_wlm7gDEa3M', 'ZUvBfLWCB20', 'rEkXnoNNK_8', 'mnGumcBVha4', 'wNBc8xIht-U', 'IJEFTnFgZv0', 'h-3CmKofKTU', '3UGEBOvqnoA', 'SiHAJSQG_mA', 'fjoNUXrdYkY', '_Ixk4ca0f3g', '10DPtQDaTqM', 'ZT2z0nrsQ8o', 'jr_F6LDLiRg', 'hZgF4q-abBY', 'SIbr9HtYRDE', 'rZp3M9qmF7U', '0BhjPIVjyYs', 'sRLAOJHAeFU', '-xDARQKJAL0', '5DtgXdOYbq8', '6HUlnJQ1-T4', 'mj6C_Yh7afQ', 'k-2kk6s1axk', 'KMzLexogQ9g', 'iLPePxrqsz4', 'sVOdrWTLABA', 'R1SC79kfwaQ', '4l9ijsgQmyQ', 'a8m-Wu6wd9Y', 'BaIebj0AMvw', 'oJmfMEeaI-E', 'quhTqDIgHV8', 'gNXh0M5R53M', 'c0sYSmxTwv0', 'ubEublECnMU', 'O_ueyefaFDI', 'y5SmYWNK0Wg', '7oGDmlSbckQ', 'bWkyuPGQcS8', 'E5wGqv6HLzg', '5T7c-P17vFQ', 'QrlqBjV3d2Y', '2zNSgSzhBfM', 'u_ewnxQ2VjQ', 'D_Q4wrRte0E', 'juJ3Qzo-YCo', 'iBFPikNylyY', 'cbsPj3GwUoo', 'VVer0TdXKHU', '6YLAw8LRWww', 'OFOdwZlzMdY', 'rBCwYfjodIQ', 'H4-7Jx40UC8', '4_OqW0S35eI', '7Ui1XmBeL3s', 'sjcTgNkFVBw', 'Q8s12fsSoko', '7XNIDk4eKsc', 'v2uP_zzLIXc', 'GNZaJ548PC8', '4llvjgo-reM', 'UR9pLTsAMsQ', '7CUbTDOfkZE', 'Y1wrBMbmS1I', '2MZZEdJJjsk', 'lPlsKMNzVh0', 'SScsB3eOqJI', 'nS5B8mXrL28', '0ScOUX328IY', 'bM-D2Z9IDtU', 'bpDt-jWITyM', 'eP5wNDeGqLk', 'c4D0166bTao', '_6Au0xCg3PI', 'AnIR8pNT_JM', 'pW0trFa5t5I', 'o94fOndX2Co', 'FEMqVSgA3xc', 'A-PRCQFXXJs', 'RyCYEuE0dps', '1AfyWh5KwNg', 'IXEhSw8e--I', 'xi3OKZ_7Qn4', '76ZRPLKQAbo', '-Rhkv3ole7E', 'uKREabMNb1s', 'SgpTP2TsC1Y', 'HlXYNeliWM8', 'QK8mJJJvaes', 'c18ZVXVnRbQ', 'IuJgXuroYA0', 'NUc4cIA4xzc', 'jrnR9XiaQpM', 'fsWOMYfagpY', 'SdZUd-Rwl1s', 'MMoLEYKT7mI', 'QAuLky9NY9E', 'i2DAp-qnWeA', '4Ue74O0tSv0', '1CZhlTaX3P4', 'JNQMUff43xw', 'ivmJOlBAkhE', 'Qk8CmaYxEvw', 'ICFR2tC38MY', 'tJmXMgNDtnI', '8wYAoPK4IHo', '9HgHWJmQJ6Y', 'f_bJtcfGlH8', '0amQvnc20Gk', 'ABUZ3WpYe_A', 'mBxqaXtTkHg', 'kAl1QedZEx4', 'Y2ddXEhvlpM', 'dN14xrnZwXw', 'ZAAeVDsek9I', 'syBRXVknjWo', 'vuqIYZI6k9I', 'f1izppAVWaA', 'p-PYqxQnwEI', 'VCIwPiPI6Ys', 'dtwQv9Ks5Zk', 'reYZ5t4SasA', 'rhXWc1lJBZ0', '_4YJ6voWJn8', 'x4D3X7q20dQ', 'd41eOJH4y_Y', '-ogu18IVTk8', 'iIl6cEKMUgc', 'N7c6vL7XaLI', 'yxsVKf0k7Hs', 'CmQxZwUMGxw', 'mQfoNyD3b6Q', '0prwNA6uoSg', 'zecHR0gaD-E', '6uTgxEqx5G8', 'lumIy6NZB-A', 'joEZsv8nE5c', 'Lb8VGp_R2Ok', 'um77BZG4_VM', 'ZROEc-5CuBY', 'f3CmTFadMeE', 'OR4OMVhIbIo', 'SfRuRmmAoS0', 'WjaRVAROd_M', 'mnBdE5Fkd2w', '5P5nxdJAFdE', 'SFcHiyN2aJ4', 'LcHB-K13o7E', 'qY3OxMlEaR8', '7TdIDVfnN4s', 'lSuQPHDL5Rs', 'pVftjbKeEyY', 'c4-xzj0iwTU', 'WmGM27BuE9s', 'B9vaVbpVcOw', 'Oooqzx2U1pw', '8e6dWehgfi4', 'UYvgEL5Qwkk', 'HRe_qZ85Lw0', 'Iimlj_w676M', 'FPmcdx82CuU', 'VCO37-EQrPM', 'z1Innzrpkbk', 'JQkfweYn_ZE', 'HIXEfylvcv4', 'DRcrKwGoAdQ', 'pz6Ht1IqKZE', '3U_M3sIjec4', 'h_uwIKWt5PM', 'dHws45Oebm0', 'MsWKrsZeWI4', 'Oeps30-MizI', 'P4OWon-lg10', '2zF1R9Ov0X8', 'hAE7S8jCuww', '_dmgHKveoac', 'N0uF60P0b3Q', 'yfwmWeWuPaU', 'tJ1mCqKilXY', 'B_d4e3sq5HY', 'l1Bfc2d60R8', 'nCelkb-TbA0', 'eehrrWKiy_8', 'Tyyb2TjwZfk', 'RwZFNva71b4', 'K5muPTIKEvA', '7dxneEnMBv0', '3RE2aD41y0o', 'YMcGeEOvBsQ', 'uEpPtaYhwdA', 'fxy5tLDp7IQ', 'xMY7iYql1D0', 'P4V8F_V-jXA', 'UzUC43urpeU', 'fqeHNz6CtC0', '0Y6G41TtApE', 'HxrRmxss8KE', '82WN_7wV2QE', 'wC5QJ2HT8DQ', 'dq491-FfEvc', 'XMLiqEqMQyQ', 'rY0WxgSXdEE', 'zRjTyRly5WA', 'FBuY7njfM6I', 'td86xfZmQA8', 'hmUDLhctfyA', '-0Xac2DHwAU', 'BnLsZrpalYQ', 'JSJcFuTnqxM', '_85EQntxmWQ', 'H6rv2x4uxos', 'wRPQ4cd8tnE', 'w4IEb1Bozgw', 'EnsTE3hd97w', 'GhoVNz-e-4c', 'erAlcmYZpik', 'edMEusyNyrY', 'sUQCbSKjPiA', 'ANAgDNzuiMs', 'yXxlQ5zI7E8', 'AFdWmd8Xtdg', 'w050frCNpOg', '09S8M5gKm0w', 'wIef2OD9dqs', 'nOXQW0-FM9Y', 'fpJpqBl07AQ', 'Oi5hLgMGlrs', '4pyQ4Fdqirg', 'C_oAhBWUZ1A', 'rgg1WUJhUc4', '4euKWdqtMNw', 'adb_NzWtzkU', '4s6wt1TKXa0', 'GX-6-9vppo4', 'lZXtEvUeAzg', 'LM9pGljVLrw', 'zAIPL5O9Uwk', 'LrsnJrTt0cs', 'RavfzX26gRs', 'iI7nR8hRhyw', 'UiYjMn_ZINk', '-xC99IDFTno', 'zIUW3O_rEsE', 'nUVTzgXfYWU', 'WPUrWy2uyig', 'r2t_lFASyIE', 'jNh3n7NbAEM', 'WF2katJ22FA', 'oQPA7r3LJpk', 'LcrRK7hcCg4', 'wpb3bi2hbeM', 'DAD79gvZKYg', 'fPGGtDwYYB0', 'DSVq1X65fP8', 'L1GezCFuPjQ', 'JGBU0P4kiNc', 'vbty3DqL6gc', 'WCrTrtxAUbA', '2zPsfl8Tl2g', '5-o2aub2M2Y', 'l-nAz77qNgw', 'eNjXWSsqfpE', 'PuCgjiN0ZbQ', 'aVsoxe4LfNI', 'VOP9-RLDbCg', 'WhGThSNQb7k', 'OdiipzJJf3o', '-RulWoK1eNE', '5yL2PwD9R60', 'qPoJuboDCh0', 'd8Etp3liY1w', '-6G6CZT7h4k', 'W0FMfmDyL14', 'JEmqeEu3tEo', 'qyB6J4zsVr4', 'Fnwpe0tSWto', '9dpmNaVUXxc', 'CWWJSUilMTQ', 'thWd732Lfv8', 'WE_CYyopLuk', '-A-oN1UkZGA', 'FJD-plHlwnM', 'ACQ6hJTAUkY', 'N-NMC69X-Jw', '4hpEnLtqUDg', 'a9iIZKsLKP0', 'JGvFslbQy_E', 'ocwYMATnWN0', '6JnDUEemvsw', '8f7wj_RcqYk', 'VT6EREFmZig', 'i-mzd2Z4_2w', 'bXrMGdJi62I', 'ajifwmgadhY', 'lnbGtpj5JmA', 'elW_ZUmA2Rs', '3R8HGsbI4QY', 'ctN-7sv-x-E', '2JYQXK9waMg', 'DKAb4YD0Euc', 'PPZloK1cqrE', 'QesPNAN2s0w', 'Do5MMmEygsY', 'c7jUfve5cNo', 'j_M91n9Z0bs', 'ZoqBxOZXpCg', '9VdrzPHSGWE', '85c16QjtJgQ', 'wSpjp5VhnUA', 'Cghk0QZjT9Y', '9Ifj415HFaE', 'bEoP3lNzT_U', 'GBY2cKtUc_g', 'p9ReM4ehDIM', 'ak35QSiGOCc', '__DuGR8gIqg', 'myef8aqej_s', 'SkKz_RstRzI', 'N5cVagn6MeQ', 'aJ-e22HkhNQ', 'aUBSfycU-Xw', 'wAnkZ5c4QIc', 'vgbAeb027hU', 'VVf3AYWKeSg', 'eorsMrOvpoQ', 'rIuTO1wgSEw', 'boRAPxsUsjA', 'X8TPYbYrirQ', '6LiXalUaWj8', 'Oxg2sh7sWgc', '-GJ2OtNXc5g', '00XJ9qrtyHM', 'D1nxeok0Rho', 'tNp62EfaJ60', 'V21kVy8dgd4', '6aZMrtsM56k', 'jLmrTiOtItY', 'TxvXDnp0p54', 'oYEjnjS95xg', 'uqdXau5nE38', '_CHRUgShrEA', 'adOcQVTGpGI', 'lnJNdhjuo-g', 'Cv-Zjc_5w6A', 'olYGZbf7NsI', 'XQaEEsO-dLA', 'tAxt4p14TLY', 'fD_PdIIzsNc', 'tTrbnavaWhg', '7ISAy25is6c', 'RydUtIlMzVk', '5k5h4_8SlNI', 'mW5LHtnq_0A', 'ULyGzzuYSbM', 'cprheYjFgiE', '-GXQw5ozbXc', 'qB_vzjkq6m8', 'yULA8q7qGbQ', 'ZRQH9slQvXQ', '-uWpiX5m4CY', 'yrAWLM6M1GM', 'HtbcdcEC3ew', 'UOZTUMtESb0', 'dy82OJf3IvI', 'H79hmV9j9nU', 'ZcA4X1W62cg', 'GQUlQ6NeiIg', 'WAqkwOWZ3ws', 'Vm-s6AKdmBg', 'Aov6BmpUtUs', 'obFt5Q3-W84', '4dgsw92p0Qg', 'Kl7FCfZ_5AU', '22K3dLpqeIM', 'jMitYskaT_Y', 'YX6eoRTaoUc', 'CwMGP7gWICc', 'UZjOpfTDv4o', 'jEWqXaD8GXc', 'gMAcJERWlfc', '2WT2sPSLhmY', 'K5a_v0MP_Fk', '_BN8NGHhRtc', 'wxtwNfSVwB0', 'HvuEFafFhBA', 'cncR0BOajoY', 'TxMuImP_WNc', 'QBA8MvkZttE', '_sUVJ3fTWNA', 'wWDtE-90BBk', '-cX2nTSC5L8', '3_xsj_wx4HA', 'd_rGNgxgVto', 'KGPyWY_AVz0', '9gASra78rvU', '9iMlMaEp3D0', '2zErd8iUKfQ', 'dN0BuN_gA_8', 'UiVdwOYPABk', 'iCRNYixgVyQ', 'eHCyaJS4Cbs', 'BYs9ikTgq78', 'bCRtUOjBOTw', 'NWUuJO0jUXY', 'iCkYw3cRwLo', 'So6FKY1ahus', 'S5H4Hpwq3MI', 'VjzMLPNE-fo', '5zfAS-qnMmM', 'iWywTkwIiOk', 'GP_HNvUlzRc', 'BtxghpZy4w0', 'QEs9tCvR5so', '57_cyrfsxUM', 'cEOu29AdiOA', 'feU2lZSQl0k', 'U9xaOOj3dhQ', 'tBNHPk-Lnkk', 'WK1n6TXVIq8', 'NscgrL-CGV0', 'wyBiprCxVR0', '_nDYbCu4iLs', 'C8fee-ZCSkU', '9ZJhUsRdb1o', '9bZkp7q19f0', 'KmGoi-rzaUo', 'oO8VO6JQazs', 'IbRLszbU8go', '3v_Km6cv6DU', 'PqfgpTRuIFg', 'IoNWD9l_x1I', 'NvGg0rwNmLc', 'Xkhs6dMB0i4', 'PQF49i8k998', 'HFZtOk42ets', '9xynWDEDp_4', '6kIb18UlZcI', 'Vl1OCrvVdIU', 'TnvZH6ApuVU', 'I0t5fUC4jgc', 'ThRYc1NNuZQ', 'AM8IDb1ztjo', '2b9dMXv8aW8', 'HcaEQFc2ez8', 'eeKfmy65Tzk', 'k-oTF5EnRDI', 'DkEe8NBgN84', '1zF7CiZ8mnA', '9kVVaMle1wM', '8fb0BEnheO0', 'gP_PNSYg-Pk', 'd6DZOq2hulk', 'HM6XK-TR_z8', 'HVKCH4jlikQ', 'EuvzjzW2n14', 'XHi5sjVJ-Zc', 'W479P3zXukk', '0LUuIffxhBs', 'KNA0yGBtTD0', 'PrFe01LeKbA', '-RJUETGwBTA', '8OGP5moGpRM', 'O0E3I18VlxQ', 'iKoBrv3n3VU', 'oPeodpkaBjc']
-    print(len(video_IDs))
-    youtube.get_videos_info(video_IDs)
+
+    # video_IDs = get_IDs_from_file('video_IDs.txt')
+    video_IDs = youtube.get_IDs_from_playlist('PLmXxqSJJq-yXrCPGIT2gn8b34JjOrl4Xf')
+    write_IDs_to_file(video_IDs)
+    # print(len(video_IDs))
+    video_topics = youtube.get_videos_topics(video_IDs)
+    write_topics_to_file(video_topics)
+    filtered_videos = filter_videos_by_topic(video_topics, 'music')
+    write_titles_to_file(filtered_videos, file_path='filtered_videos.txt')
     pass
 
 
