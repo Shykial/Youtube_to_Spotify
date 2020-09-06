@@ -1,3 +1,5 @@
+import csv
+
 import requests
 import json
 import re
@@ -130,12 +132,14 @@ I wpisz poniżej link, do którego zostałeś przekierowany/a po zalogowaniu:
         r = requests.put(f'https://api.spotify.com/v1/playlists/{playlist_id}/tracks', headers=headers, data=data)
         print(r.text)
 
-    def search_items(self, search_queries, res_type='track', limit=1) -> list:  # returns list of objects URIs
+    def search_items(self, search_queries, old_items, res_type='track',
+                     limit=1) -> list:  # returns list of objects URIs todo delete old items when no longer needed
         headers = self.auth_header
         items_list = []
-        items_not_found = []
+        # items_not_found = []
+        items_not_found = {}
         counter = 1
-        for query in search_queries:
+        for query, old_item in zip(search_queries, old_items):
             print(f'Wyszukanie {counter}, obecnie w liście: {len(items_list)}')
             params = {'q': query,
                       'type': res_type,
@@ -148,11 +152,12 @@ I wpisz poniżej link, do którego zostałeś przekierowany/a po zalogowaniu:
                     if returned_items := r.json()[response_type]['items']:
                         items_list.append(returned_items[0]['uri'])
                     else:
-                        pattern = re.compile(r'ft\.?|feat.?', flags=re.IGNORECASE)
-                        if pattern.search(params['q']):
-                            params['q'] = pattern.sub('', params['q'])
-                            continue
-                        items_not_found.append(query)
+                        # pattern = re.compile(r'ft\.?|feat.?', flags=re.IGNORECASE)
+                        # if pattern.search(params['q']):
+                        #     params['q'] = pattern.sub('', params['q'])
+                        #     continue
+                        # items_not_found.append(query)
+                        items_not_found[query] = old_item
                     break
                 except KeyError:
                     if r.json()['error']['message'] == 'No search query':
@@ -171,8 +176,9 @@ I wpisz poniżej link, do którego zostałeś przekierowany/a po zalogowaniu:
                 #     if returned_items:
                 #         items_list.append(returned_items[0]['uri'])
             counter += 1
-        write_items_to_file(items_not_found, 'titles_not_found.txt')
-        return items_list
+        write_dict_items_to_file(items_not_found, 'titles_not_found.tsv')
+        # write_items_to_file(items_not_found, 'titles_not_found.txt')
+        return list(set(items_list))  # using list -> set -> list to filter duplicate items
 
     def search_items_threading(self, *query_strings, res_type='track', limit=1) -> list:  # returns list of objects URIs
         headers = self.auth_header
@@ -222,20 +228,25 @@ def write_items_to_file(items, file_path):
             f.write(item + '\n')
 
 
-def get_corrected_titles(titles):
-    """Using regex to filter words from the video title most likely being meaningless for the music track title itself."""
-    pattern = re.compile(
-        r'([()\[\]]|lyrics | of+icial | music | video | audio | HQ | High Definition'
-        r' | instrumental | remix | edit | cover| live | [^\w\s.\'-])',
-        flags=re.I | re.X)  # gives 331 from 499
+def write_dict_items_to_file(items: dict, file_path):  # todo delete this method when no longer needed
+    with open(file_path, 'w', encoding='utf-8', newline='') as f:
+        tsv_writer = csv.writer(f, delimiter='\t')
+        for key, val in items.items():
+            tsv_writer.writerow([key, val])
 
-    pattern2 = re.compile(
-        r'lyrics | of+icial | music\s*video | M[/\\]?V | audio | HQ | High Definition | instrumental | \bfeat\b | \bft\b |remix | edit | cover| \blive\b | \bx\b | [12][9012]\d{2}$ | \(.*\) | \[.*] |[._] | [^\w\s.\']',
-        flags=re.IGNORECASE | re.VERBOSE | re.MULTILINE)  # gives 431 out of 499!!! update 447 yo 453 yo 459 yo 460 yo 461 yo
+
+
+def get_corrected_titles(titles):
+    """Using regex to filter words from the video title,
+     which are most likely meaningless for the music track title itself. """
+
+    pattern = re.compile(
+        r'lyrics | of+icial | music\s*video | M[/\\]?V | audio | HQ | High Quality| HD |High Definition | instrumental | \bfeat.?\b | \bft\.?\b |remix | edit | cover| \blive\b | \bx\b | prod\.?.* | (?<=\s)& | (?<=\s)and(?=\s.*-)| (?<!\w)-(?!\w) | (?<=\s)with(?=\s.*-) |[12][9012]\d{2}$ | \(.*\) | \[.*] |[._] | [^\w\s.\'*$\u00c0-\u017e&-]',
+        flags=re.IGNORECASE | re.X | re.MULTILINE | re.UNICODE)  # 466 yo // 1000/1109 yo 1019 yo 1024 yo 1033 yo # 468/500 # 1042/1109 yo
 
     new_titles = []
     for title in titles:
-        new_title = pattern2.sub('', title)
+        new_title = pattern.sub('', title)
         new_title = re.sub(re.compile(r'\s{2,}'), ' ', new_title)  # trimming multiple whitespaces
         new_titles.append(new_title)
 
@@ -248,14 +259,16 @@ def get_corrected_titles(titles):
 
 if __name__ == '__main__':
     spotify = SpotifyAPI()
-    # playlist_1 = spotify.create_playlist('Nowa playlista testowa XDDD')
+    # playlist_1 = spotify.create_playlist('From my liked items')
     with open('filtered_videos.txt', 'r', encoding='utf-8') as f:
         items = [line.strip() for line in f]
     titles = get_corrected_titles(items)
-    tracks = spotify.search_items(titles)
+    tracks = spotify.search_items(titles, items)
+    print(len(tracks))
     # tracks = spotify.search_items_threading(*items)
     print('yoo')
-    spotify.add_tracks_to_playlist('7jL6SyXjlt1P0Rz9uDoo9o', *tracks)
-    input('yoo')
-    spotify.clear_playlist('7jL6SyXjlt1P0Rz9uDoo9o')
+    # spotify.add_tracks_to_playlist('7jL6SyXjlt1P0Rz9uDoo9o', *tracks)
+    # spotify.add_tracks_to_playlist(playlist_1, *tracks)
+    # input('yoo')
+    # spotify.clear_playlist('7jL6SyXjlt1P0Rz9uDoo9o')
     # one = spotify.search_items('Kendrick Lamar', 'Eminem', 'Rihanna', 'Kanye West', 'Mozart', 'Friderick Chopin', 'rysiek z klanu hehe xD', res_type='artist')
