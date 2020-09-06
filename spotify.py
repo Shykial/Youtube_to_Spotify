@@ -235,15 +235,15 @@ def write_dict_items_to_file(items: dict, file_path):  # todo delete this method
             tsv_writer.writerow([key, val])
 
 
-
 def get_corrected_titles(titles):
     """Using regex to filter words from the video title,
      which are most likely meaningless for the music track title itself. """
 
     pattern = re.compile(
-        r'lyrics | of+icial | music\s*video | M[/\\]?V | audio | HQ | High Quality| HD |High Definition | instrumental | \bfeat.?\b | \bft\.?\b |remix | edit | cover| \blive\b | \bx\b | prod\.?.* | (?<=\s)& | (?<=\s)and(?=\s.*-)| (?<!\w)-(?!\w) | (?<=\s)with(?=\s.*-) |[12][9012]\d{2}$ | \(.*\) | \[.*] |[._] | [^\w\s.\'*$\u00c0-\u017e&-]',
-        flags=re.IGNORECASE | re.X | re.MULTILINE | re.UNICODE)  # 466 yo // 1000/1109 yo 1019 yo 1024 yo 1033 yo # 468/500 # 1042/1109 yo
-
+        r'lyrics | (?:official|music)\s*video | of+icial | M[/\\]?V | audio | HQ | High\sQuality| HD |High\sDefinition | instrumental | vevo(?:\s+ctrl|\s+DSCVR)? | \bfeat.?\b | \bft\.?\b | remix | edit | cover| \blive\b (?:\s+session|\s+performance)? | \bx\b | prod\.?.* |(?<=\s)& | (?<=\s)and(?=\s.*-)| (?<!\w)-(?!\w) | (?<=\s)(?:with|vs\.?)(?=\s.*-) |[12][9012]\d{2}$ | \(.*\) | \[.*] |[._] | [^\w\s.\'*$\u00c0-\u017e&-]',
+        flags=re.IGNORECASE | re.X | re.MULTILINE | re.UNICODE)  # 466 yo // 1000/1109 yo 1019 yo 1024 yo 1033 yo # 468/500 # 1042/1109 yo # 1069/1109
+    # different playlist 449/495 # 465 # 469/495
+    # 469/500
     new_titles = []
     for title in titles:
         new_title = pattern.sub('', title)
@@ -259,7 +259,7 @@ def get_corrected_titles(titles):
 
 if __name__ == '__main__':
     spotify = SpotifyAPI()
-    # playlist_1 = spotify.create_playlist('From my liked items')
+    playlist_1 = spotify.create_playlist('From my liked items better')
     with open('filtered_videos.txt', 'r', encoding='utf-8') as f:
         items = [line.strip() for line in f]
     titles = get_corrected_titles(items)
@@ -268,7 +268,7 @@ if __name__ == '__main__':
     # tracks = spotify.search_items_threading(*items)
     print('yoo')
     # spotify.add_tracks_to_playlist('7jL6SyXjlt1P0Rz9uDoo9o', *tracks)
-    # spotify.add_tracks_to_playlist(playlist_1, *tracks)
+    spotify.add_tracks_to_playlist(playlist_1, *tracks)
     # input('yoo')
     # spotify.clear_playlist('7jL6SyXjlt1P0Rz9uDoo9o')
     # one = spotify.search_items('Kendrick Lamar', 'Eminem', 'Rihanna', 'Kanye West', 'Mozart', 'Friderick Chopin', 'rysiek z klanu hehe xD', res_type='artist')
