@@ -259,7 +259,7 @@ def get_corrected_titles(titles):
 
 if __name__ == '__main__':
     spotify = SpotifyAPI()
-    playlist_1 = spotify.create_playlist('From my liked items better')
+    playlist_1 = spotify.create_playlist('Eminem songs')
     with open('filtered_videos.txt', 'r', encoding='utf-8') as f:
         items = [line.strip() for line in f]
     titles = get_corrected_titles(items)
