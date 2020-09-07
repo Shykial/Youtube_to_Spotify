@@ -29,7 +29,7 @@ def create_yt_service_instance():
     api_version = 'v3'
     credentials = get_yt_credentials()
     return build(api_service_name, api_version, credentials=credentials)
-''
+''''''
 
 
 class YoutubeAPI:
