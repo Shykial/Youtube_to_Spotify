@@ -1,43 +1,40 @@
 from googleapiclient.discovery import build
 import json
-import requests
 import google_auth_oauthlib.flow
 import pickle
 import time
 import csv
-import concurrent.futures
+
+
+def get_yt_credentials():
+    client_secrets_file = 'yt_secrets.json'
+    scopes = ['https://www.googleapis.com/auth/youtube.readonly']
+    flow = google_auth_oauthlib.flow.InstalledAppFlow.from_client_secrets_file(
+        client_secrets_file, scopes)
+    try:
+        with open('creds.p', 'rb') as f:
+            return pickle.load(f)
+
+    except (FileNotFoundError, EOFError):
+        with open('creds.p', 'wb') as f:
+            print('Tworzenie nowego tokenu')
+            credentials = flow.run_console('Zaloguj się do aplikacji za pomocą linku: {url}',
+                                           'Wprowadź otrzymany kod uwierzytelnienia: ')
+            pickle.dump(credentials, f)
+            return credentials
+
+
+def create_yt_service_instance():
+    api_service_name = 'youtube'
+    api_version = 'v3'
+    credentials = get_yt_credentials()
+    return build(api_service_name, api_version, credentials=credentials)
 
 
 class YoutubeAPI:
 
     def __init__(self):
-        self.yt = self.create_yt_service_instance()
-
-    def create_yt_service_instance(self):
-        api_service_name = 'youtube'
-        api_version = 'v3'
-        credentials = self.get_yt_credentials()
-        return build(api_service_name, api_version, credentials=credentials)
-
-    def get_yt_credentials(self):
-        client_secrets_file = 'yt_secrets.json'
-        scopes = ['https://www.googleapis.com/auth/youtube.readonly']
-        flow = google_auth_oauthlib.flow.InstalledAppFlow.from_client_secrets_file(
-            client_secrets_file, scopes)
-        try:
-            with open('creds', 'rb+') as f:
-                try:
-                    return pickle.load(f)
-                except EOFError:
-                    print('Tworzenie nowego tokenu')
-                    credentials = flow.run_console()
-                    pickle.dump(credentials, f)
-                    return credentials
-        except FileNotFoundError:
-            with open('creds', 'wb') as f:
-                credentials = flow.run_console()
-                pickle.dump(credentials, f)
-                return credentials
+        self.yt = create_yt_service_instance()
 
     def list_playlists(self):
         request = self.yt.playlists().list(
@@ -48,15 +45,6 @@ class YoutubeAPI:
         print(request)
         response = request.execute()
         print(json.dumps(response, indent=4))
-
-    def testing(self):
-        token = '4/3wGgOEQdhABSNQ-lAaLzg3Ty2az44u597OgeaLXmNPk-NYGtBPeEo00'
-        headers = {
-            'Authorization': f'Bearer {token}',
-            'Accept': 'application/json'
-        }
-        r = requests.get('https://www.youtube.com/feed/my_videos', headers=headers)
-        print(r.json())
 
     def get_IDs_from_playlist(self, playlist_id) -> list:
         IDs = []
@@ -94,15 +82,11 @@ class YoutubeAPI:
         return IDs
 
     def get_videos_topics(self, IDs) -> dict:
-        # print(IDs)
         print('Pobieranie informacji o wybranych filmach', end='')
-        responses = []
         items = {}
         step = 50
         item_packs = [IDs[i:i + step] for i in range(0, len(IDs), step)]
-        start = time.time()
         for pack in item_packs:
-            # print(', '.join(pack))
             print('.', end=' ')
             request = self.yt.videos().list(
                 part='snippet, topicDetails',
@@ -197,6 +181,8 @@ def filter_videos_by_topic(videos_with_topics, queried_topic) -> list:
             topics = [topics]
         if not topics or any(queried_topic.lower() in topic.lower() for topic in topics):
             filtered_titles.append(title)
+        else:
+            pass
     return filtered_titles
 
 
@@ -209,8 +195,13 @@ def main():
     # write_titles_to_file(choice, yt_vids)
     # youtube.list_playlists()
     # youtube.testing()
-    video_IDs = get_IDs_from_file('video_IDs.txt')
-    # video_IDs = youtube.get_IDs_from_playlist('PLFgquLnL59alcyTM2lkWJU34KtfPXQDaX')
+    # video_IDs = get_IDs_from_file('video_IDs.txt')
+    # video_IDs = youtube.get_IDs_from_playlist('PLFgquLnL59alcyTM2lkWJU34KtfPXQDaX')  # 500 music videos
+    # video_IDs = youtube.get_IDs_from_playlist('PL3666F5DD61E96B6D') # 1109 music videos
+    # video_IDs = youtube.get_IDs_from_playlist('LLdbdHlxCs0jEI6oPKl5um3g')  # my liked videos
+    video_IDs = youtube.get_IDs_from_playlist('PL8cG8AVijUMg0PScFy9IcUUKxL6qW8Bfa')  # Em's songs
+    # video_IDs = youtube.get_IDs_from_playlist('PLbpvZGLuRoECKlZ2i8eshh-88aEiQ63n0')  # Polish songs
+    # video_IDs = youtube.get_IDs_from_playlist('PLkqz3S84Tw-RrA5S0qoVYlQ3CmwIljp3j')  # different 499 music videos
     # write_IDs_to_file(video_IDs)
     # # print(len(video_IDs))
     start = time.time()
