@@ -10,7 +10,7 @@ import time
 # from spotify_secrets import spotify_client_ID as s_client_ID, spotify_client_Secret as s_client_Secret
 # from spotify_secrets import spotify_token as s_token
 from spotify_secrets import *
-
+from decorators import timer
 
 class SpotifyAPI:
 
@@ -132,11 +132,11 @@ I wpisz poniżej link, do którego zostałeś przekierowany/a po zalogowaniu:
         r = requests.put(f'https://api.spotify.com/v1/playlists/{playlist_id}/tracks', headers=headers, data=data)
         print(r.text)
 
+    @timer
     def search_items(self, search_queries, old_items, res_type='track',
                      limit=1) -> list:  # returns list of objects URIs todo delete old items when no longer needed
         headers = self.auth_header
         items_list = []
-        # items_not_found = []
         items_not_found = {}
         counter = 1
         for query, old_item in zip(search_queries, old_items):
@@ -177,29 +177,39 @@ I wpisz poniżej link, do którego zostałeś przekierowany/a po zalogowaniu:
                 #         items_list.append(returned_items[0]['uri'])
             counter += 1
         write_dict_items_to_file(items_not_found, 'titles_not_found.tsv')
-        # write_items_to_file(items_not_found, 'titles_not_found.txt')
         return list(set(items_list))  # using list -> set -> list to filter duplicate items
 
-    def search_items_threading(self, *query_strings, res_type='track', limit=1) -> list:  # returns list of objects URIs
+    @timer
+    def search_items_threading(self, search_queries, old_items, res_type='track',
+                               limit=1) -> list:  # returns list of objects URIs
         headers = self.auth_header
         items_list = []
+        items_not_found = {}
         self.counter = 1
 
-        def inner(query):
-            self.counter += 1
+        def inner(query, old_item):
             print(f'Wyszukanie {self.counter}, obecnie w liście: {len(items_list)}')
             params = {'q': query,
                       'type': res_type,
                       'limit': limit}
             response_type = res_type + 's'
             # 5 attempts on getting proper API response as it may result in incorrect response sometimes
-            for attempt in range(1, 100):
+            for attempt in range(1, 6):
                 r = requests.get('https://api.spotify.com/v1/search', headers=headers, params=params)
                 try:
                     if returned_items := r.json()[response_type]['items']:
                         items_list.append(returned_items[0]['uri'])
+                    else:
+                        # pattern = re.compile(r'ft\.?|feat.?', flags=re.IGNORECASE)
+                        # if pattern.search(params['q']):
+                        #     params['q'] = pattern.sub('', params['q'])
+                        #     continue
+                        # items_not_found.append(query)
+                        items_not_found[query] = old_item
                     break
                 except KeyError:
+                    if r.json()['error']['message'] == 'No search query':
+                        break
                     time.sleep(int(r.headers['retry-after']))
                     print(f'attempt: {attempt}')
                     continue
@@ -213,13 +223,13 @@ I wpisz poniżej link, do którego zostałeś przekierowany/a po zalogowaniu:
                 #     returned_items = r.json()[response_type]['items']
                 #     if returned_items:
                 #         items_list.append(returned_items[0]['uri'])
+            self.counter += 1
 
         with concurrent.futures.ThreadPoolExecutor() as executor:
-            for query in query_strings:
-                time.sleep(.075)
-                executor.submit(inner, query)
-
-        return items_list
+            for query, old_item in zip(search_queries, old_items):
+                time.sleep(0.05)
+                executor.submit(inner, query, old_item)
+        return list(set(items_list))  # using list -> set -> list to filter duplicate items
 
 
 def write_items_to_file(items, file_path):
@@ -259,16 +269,16 @@ def get_corrected_titles(titles):
 
 if __name__ == '__main__':
     spotify = SpotifyAPI()
-    playlist_1 = spotify.create_playlist('Eminem songs')
+    # playlist_1 = spotify.create_playlist('Eminem songs')
     with open('filtered_videos.txt', 'r', encoding='utf-8') as f:
         items = [line.strip() for line in f]
     titles = get_corrected_titles(items)
     tracks = spotify.search_items(titles, items)
+    # tracks = spotify.search_items_threading(titles, items)
     print(len(tracks))
-    # tracks = spotify.search_items_threading(*items)
     print('yoo')
     # spotify.add_tracks_to_playlist('7jL6SyXjlt1P0Rz9uDoo9o', *tracks)
-    spotify.add_tracks_to_playlist(playlist_1, *tracks)
+    # spotify.add_tracks_to_playlist(playlist_1, *tracks)
     # input('yoo')
     # spotify.clear_playlist('7jL6SyXjlt1P0Rz9uDoo9o')
     # one = spotify.search_items('Kendrick Lamar', 'Eminem', 'Rihanna', 'Kanye West', 'Mozart', 'Friderick Chopin', 'rysiek z klanu hehe xD', res_type='artist')

@@ -4,6 +4,7 @@ import google_auth_oauthlib.flow
 import pickle
 import time
 import csv
+from decorators import timer
 
 
 def get_yt_credentials():
@@ -29,7 +30,6 @@ def create_yt_service_instance():
     api_version = 'v3'
     credentials = get_yt_credentials()
     return build(api_service_name, api_version, credentials=credentials)
-''''''
 
 
 class YoutubeAPI:
@@ -82,6 +82,7 @@ class YoutubeAPI:
         # print(IDs)
         return IDs
 
+    @timer
     def get_videos_topics(self, IDs) -> dict:
         print('Pobieranie informacji o wybranych filmach', end='')
         items = {}
@@ -97,7 +98,7 @@ class YoutubeAPI:
             for item in response['items']:
                 items[item['snippet']['title']] = item['topicDetails'][
                     'topicCategories'] if 'topicDetails' in item else None
-
+        print()
         return items
 
     def get_titles_from_playlist(self, playlist_id) -> list:
@@ -198,16 +199,14 @@ def main():
     # youtube.testing()
     # video_IDs = get_IDs_from_file('video_IDs.txt')
     # video_IDs = youtube.get_IDs_from_playlist('PLFgquLnL59alcyTM2lkWJU34KtfPXQDaX')  # 500 music videos
-    # video_IDs = youtube.get_IDs_from_playlist('PL3666F5DD61E96B6D') # 1109 music videos
+    video_IDs = youtube.get_IDs_from_playlist('PL3666F5DD61E96B6D') # 1109 music videos
     # video_IDs = youtube.get_IDs_from_playlist('LLdbdHlxCs0jEI6oPKl5um3g')  # my liked videos
-    video_IDs = youtube.get_IDs_from_playlist('PL8cG8AVijUMg0PScFy9IcUUKxL6qW8Bfa')  # Em's songs
+    # video_IDs = youtube.get_IDs_from_playlist('PL8cG8AVijUMg0PScFy9IcUUKxL6qW8Bfa')  # Em's songs
     # video_IDs = youtube.get_IDs_from_playlist('PLbpvZGLuRoECKlZ2i8eshh-88aEiQ63n0')  # Polish songs
     # video_IDs = youtube.get_IDs_from_playlist('PLkqz3S84Tw-RrA5S0qoVYlQ3CmwIljp3j')  # different 499 music videos
     # write_IDs_to_file(video_IDs)
     # # print(len(video_IDs))
-    start = time.time()
     video_topics = youtube.get_videos_topics(video_IDs)
-    print(time.time() - start)
     write_topics_to_file(video_topics)
     filtered_videos = filter_videos_by_topic(video_topics, 'music')
     write_titles_to_file(filtered_videos, file_path='filtered_videos.txt')
