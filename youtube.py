@@ -8,10 +8,11 @@ from decorators import timer
 
 
 def get_yt_credentials():
-    client_secrets_file = 'yt_secrets.json'
+    client_secrets_file_web = 'yt_secrets.json'
+    client_secrets_file_native = 'yt_secrets_old.json'
     scopes = ['https://www.googleapis.com/auth/youtube.readonly']
     flow = google_auth_oauthlib.flow.InstalledAppFlow.from_client_secrets_file(
-        client_secrets_file, scopes)
+        client_secrets_file_web, scopes)
     try:
         with open('creds.p', 'rb') as f:
             return pickle.load(f)
@@ -19,8 +20,15 @@ def get_yt_credentials():
     except (FileNotFoundError, EOFError):
         with open('creds.p', 'wb') as f:
             print('Tworzenie nowego tokenu')
-            credentials = flow.run_console('Zaloguj się do aplikacji za pomocą linku: {url}',
-                                           'Wprowadź otrzymany kod uwierzytelnienia: ')
+            try:
+                flow.run_local_server(port=8080, prompt='consent')
+                credentials = flow.credentials
+            except (UnicodeDecodeError, ArithmeticError):
+                flow = google_auth_oauthlib.flow.InstalledAppFlow.from_client_secrets_file(
+                    client_secrets_file_native, scopes)
+                credentials = flow.run_console('Zaloguj się do aplikacji za pomocą linku: {url}',
+                                               'Wprowadź otrzymany kod uwierzytelnienia: ')
+            print(credentials.to_json())
             pickle.dump(credentials, f)
             return credentials
 
@@ -46,6 +54,11 @@ class YoutubeAPI:
         print(request)
         response = request.execute()
         print(json.dumps(response, indent=4))
+
+    def get_liked_videos_playlist_id(self) -> str:
+        request = self.yt.channels().list(part='contentDetails', mine=True)
+        response = request.execute()
+        return response['items'][0]['contentDetails']['relatedPlaylists']['likes']
 
     def get_IDs_from_playlist(self, playlist_id) -> list:
         IDs = []
@@ -198,18 +211,19 @@ def main():
     # youtube.list_playlists()
     # youtube.testing()
     # video_IDs = get_IDs_from_file('video_IDs.txt')
+    # liked_playlist = youtube.get_liked_videos_playlist_id()
     # video_IDs = youtube.get_IDs_from_playlist('PLFgquLnL59alcyTM2lkWJU34KtfPXQDaX')  # 500 music videos
-    video_IDs = youtube.get_IDs_from_playlist('PL3666F5DD61E96B6D') # 1109 music videos
-    # video_IDs = youtube.get_IDs_from_playlist('LLdbdHlxCs0jEI6oPKl5um3g')  # my liked videos
+    # video_IDs = youtube.get_IDs_from_playlist('PL3666F5DD61E96B6D') # 1109 music videos
+    # video_IDs = youtube.get_IDs_from_playlist(liked_playlist)  # 1109 music videos
     # video_IDs = youtube.get_IDs_from_playlist('PL8cG8AVijUMg0PScFy9IcUUKxL6qW8Bfa')  # Em's songs
     # video_IDs = youtube.get_IDs_from_playlist('PLbpvZGLuRoECKlZ2i8eshh-88aEiQ63n0')  # Polish songs
     # video_IDs = youtube.get_IDs_from_playlist('PLkqz3S84Tw-RrA5S0qoVYlQ3CmwIljp3j')  # different 499 music videos
     # write_IDs_to_file(video_IDs)
     # # print(len(video_IDs))
-    video_topics = youtube.get_videos_topics(video_IDs)
-    write_topics_to_file(video_topics)
-    filtered_videos = filter_videos_by_topic(video_topics, 'music')
-    write_titles_to_file(filtered_videos, file_path='filtered_videos.txt')
+    # video_topics = youtube.get_videos_topics(video_IDs)
+    # write_topics_to_file(video_topics)
+    # filtered_videos = filter_videos_by_topic(video_topics, 'music')
+    # write_titles_to_file(filtered_videos, file_path='filtered_videos.txt')
     # z = youtube.get_topic_videos_from_playlist('LLdbdHlxCs0jEI6oPKl5um3g', 'Music')
     # for item in z:
     #     print(item)
@@ -219,3 +233,5 @@ def main():
 
 if __name__ == '__main__':
     main()
+    youtube = YoutubeAPI()
+    pass
