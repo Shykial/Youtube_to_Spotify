@@ -6,11 +6,13 @@ import re
 import concurrent.futures
 import datetime as dt
 import time
+import os
 
 # from spotify_secrets import spotify_client_ID as s_client_ID, spotify_client_Secret as s_client_Secret
 # from spotify_secrets import spotify_token as s_token
 from spotify_secrets import *
 from decorators import timer
+
 
 class SpotifyAPI:
 
@@ -152,11 +154,13 @@ I wpisz poniżej link, do którego zostałeś przekierowany/a po zalogowaniu:
                     if returned_items := r.json()[response_type]['items']:
                         items_list.append(returned_items[0]['uri'])
                     else:
-                        # pattern = re.compile(r'ft\.?|feat.?', flags=re.IGNORECASE)
-                        # if pattern.search(params['q']):
-                        #     params['q'] = pattern.sub('', params['q'])
-                        #     continue
-                        # items_not_found.append(query)
+                        if (t := re.compile(r'\d{4}')).search(params['q']):
+                            params['q'] = t.sub('', params['q'])
+                            continue
+
+                        if (t := re.compile(r'\blive\b', flags=re.IGNORECASE)).search(params['q']):
+                            params['q'] = t.sub('', params['q'])
+                            continue
                         items_not_found[query] = old_item
                     break
                 except KeyError:
@@ -177,6 +181,7 @@ I wpisz poniżej link, do którego zostałeś przekierowany/a po zalogowaniu:
                 #         items_list.append(returned_items[0]['uri'])
             counter += 1
         write_dict_items_to_file(items_not_found, 'titles_not_found.tsv')
+        print(f'With potential duplicates: {len(items_list)}')
         return list(set(items_list))  # using list -> set -> list to filter duplicate items
 
     @timer
@@ -194,7 +199,7 @@ I wpisz poniżej link, do którego zostałeś przekierowany/a po zalogowaniu:
                       'limit': limit}
             response_type = res_type + 's'
             # 5 attempts on getting proper API response as it may result in incorrect response sometimes
-            for attempt in range(1, 6):
+            for attempt in range(1, 10):
                 r = requests.get('https://api.spotify.com/v1/search', headers=headers, params=params)
                 try:
                     if returned_items := r.json()[response_type]['items']:
@@ -227,8 +232,9 @@ I wpisz poniżej link, do którego zostałeś przekierowany/a po zalogowaniu:
 
         with concurrent.futures.ThreadPoolExecutor() as executor:
             for query, old_item in zip(search_queries, old_items):
-                time.sleep(0.05)
+                time.sleep(0.07)
                 executor.submit(inner, query, old_item)
+        print(f'With potential duplicates: {len(items_list)}')
         return list(set(items_list))  # using list -> set -> list to filter duplicate items
 
 
@@ -250,10 +256,22 @@ def get_corrected_titles(titles):
      which are most likely meaningless for the music track title itself. """
 
     pattern = re.compile(
-        r'lyrics | (?:official|music)\s*video | of+icial | M[/\\]?V | audio | HQ | High\sQuality| HD |High\sDefinition | instrumental | vevo(?:\s+ctrl|\s+DSCVR)? | \bfeat.?\b | \bft\.?\b | remix | edit | cover| \blive\b (?:\s+session|\s+performance)? | \bx\b | prod\.?.* |(?<=\s)& | (?<=\s)and(?=\s.*-)| (?<!\w)-(?!\w) | (?<=\s)(?:with|vs\.?)(?=\s.*-) |[12][9012]\d{2}$ | \(.*\) | \[.*] |[._] | [^\w\s.\'*$\u00c0-\u017e&-]',
-        flags=re.IGNORECASE | re.X | re.MULTILINE | re.UNICODE)  # 466 yo // 1000/1109 yo 1019 yo 1024 yo 1033 yo # 468/500 # 1042/1109 yo # 1069/1109
+        r'(?:official|music|lyrics?|HD|original)\s*video | (?:with\s)?lyrics?(?:\son\s(?:the\s)?screen)? | '
+        r'of+icial | M[/\\]?V | \baudio\b | HQ | High\sQuality| movie clip |(?:480|720|1080)p | Uncensored |'
+        r'\bHD\b |High\sDefinition | instrumental | vevo(?:\s+ctrl|\s+DSCVR)? | \bfeat.?\b | \bft\.?\b | remix | '
+        r'\bedit\b | \bcover\b | \blive\b (?:\s+session|\s+performance) | (?<=\.)(?:wmv|avi|mp3|mp4) | \|.* |'
+        r'\bx\b | prod\.?.* |(?<=\s)& | (?<=\s)and(?=\s.*-)| (?<!\w)-(?!\w) | (?<=\s)(?:with|vs\.?)(?=\s.*-) |'
+        r'[12][9012]\d{2}$ | \(.*?\) | (?<!p)!(?!nk) |\[.*] |[._] | [^\w\s.\'*$\u00c0-\u017e&!-]',
+        flags=re.IGNORECASE | re.X | re.MULTILINE | re.UNICODE)
+    # 466 yo // 1000/1109 yo 1019 yo 1024 yo 1033 yo # 468/500 # 1042/1109 yo # 1069/1109
     # different playlist 449/495 # 465 # 469/495
     # 469/500
+    # 664/696
+    # 1021/1058 update 1023/1058
+    # 465/487
+    # 3350/3413 >98% !!! update 3358
+    # 407/426 update 410 update 411
+    # 468/487
     new_titles = []
     for title in titles:
         new_title = pattern.sub('', title)
@@ -269,7 +287,7 @@ def get_corrected_titles(titles):
 
 if __name__ == '__main__':
     spotify = SpotifyAPI()
-    # playlist_1 = spotify.create_playlist('Eminem songs')
+    playlist_1 = spotify.create_playlist('From my liked items 2')
     with open('filtered_videos.txt', 'r', encoding='utf-8') as f:
         items = [line.strip() for line in f]
     titles = get_corrected_titles(items)
@@ -278,7 +296,8 @@ if __name__ == '__main__':
     print(len(tracks))
     print('yoo')
     # spotify.add_tracks_to_playlist('7jL6SyXjlt1P0Rz9uDoo9o', *tracks)
-    # spotify.add_tracks_to_playlist(playlist_1, *tracks)
+    spotify.add_tracks_to_playlist(playlist_1, *tracks)
     # input('yoo')
     # spotify.clear_playlist('7jL6SyXjlt1P0Rz9uDoo9o')
     # one = spotify.search_items('Kendrick Lamar', 'Eminem', 'Rihanna', 'Kanye West', 'Mozart', 'Friderick Chopin', 'rysiek z klanu hehe xD', res_type='artist')
+    os.system('rundll32 user32.dll,MessageBeep')

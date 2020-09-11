@@ -2,7 +2,6 @@ from googleapiclient.discovery import build
 import json
 import google_auth_oauthlib.flow
 import pickle
-import time
 import csv
 from decorators import timer
 
@@ -21,9 +20,9 @@ def get_yt_credentials():
         with open('creds.p', 'wb') as f:
             print('Tworzenie nowego tokenu')
             try:
-                flow.run_local_server(port=8080, prompt='consent')
-                credentials = flow.credentials
-            except (UnicodeDecodeError, ArithmeticError):
+                credentials = flow.run_local_server(authorization_prompt_message='', port=8080, prompt='consent',
+                                                    success_message='Gugiel zatrybił, możesz wrócić do aplikacji :D')
+            except UnicodeDecodeError:  # UnicodeDecodeError may occur if user's hostname contains non ASCII characters
                 flow = google_auth_oauthlib.flow.InstalledAppFlow.from_client_secrets_file(
                     client_secrets_file_native, scopes)
                 credentials = flow.run_console('Zaloguj się do aplikacji za pomocą linku: {url}',
@@ -210,20 +209,28 @@ def main():
     # write_titles_to_file(choice, yt_vids)
     # youtube.list_playlists()
     # youtube.testing()
-    # video_IDs = get_IDs_from_file('video_IDs.txt')
-    # liked_playlist = youtube.get_liked_videos_playlist_id()
-    # video_IDs = youtube.get_IDs_from_playlist('PLFgquLnL59alcyTM2lkWJU34KtfPXQDaX')  # 500 music videos
+    # playlist_id = input('Podaj ID playlisty: ')
+
+    # video_IDs = get_IDs_from_file('videcho_IDs.txt')
+    liked_playlist = youtube.get_liked_videos_playlist_id()
+    # video_IDs = youtube.get_IDs_from_playlist('PLeCdlPO-XhWFzEVynMsmosfdRsIZXhZi0')  # 500 music videos
+    # video_IDs = youtube.get_IDs_from_playlist(playlist_id)
     # video_IDs = youtube.get_IDs_from_playlist('PL3666F5DD61E96B6D') # 1109 music videos
-    # video_IDs = youtube.get_IDs_from_playlist(liked_playlist)  # 1109 music videos
+    video_IDs = youtube.get_IDs_from_playlist(liked_playlist)
     # video_IDs = youtube.get_IDs_from_playlist('PL8cG8AVijUMg0PScFy9IcUUKxL6qW8Bfa')  # Em's songs
     # video_IDs = youtube.get_IDs_from_playlist('PLbpvZGLuRoECKlZ2i8eshh-88aEiQ63n0')  # Polish songs
     # video_IDs = youtube.get_IDs_from_playlist('PLkqz3S84Tw-RrA5S0qoVYlQ3CmwIljp3j')  # different 499 music videos
-    # write_IDs_to_file(video_IDs)
-    # # print(len(video_IDs))
-    # video_topics = youtube.get_videos_topics(video_IDs)
-    # write_topics_to_file(video_topics)
-    # filtered_videos = filter_videos_by_topic(video_topics, 'music')
-    # write_titles_to_file(filtered_videos, file_path='filtered_videos.txt')
+    # video_IDs = youtube.get_IDs_from_playlist('PLURwsAewiTh2Teoh_xo3so_INYL9m5Jh-')  # 1066 "upbeat songs"
+    # video_IDs = youtube.get_IDs_from_playlist('PLgaFNC_I_Zkk5nCZM5RVyF0giKHfMx2Sn')  # 3413 2010 decade songs
+    # video_IDs = youtube.get_IDs_from_playlist('PL6T-wOsBCQccPn2QSjgUSU8lKvbBv0NCN')  # Muzyka lata 2000-2010 / 1542 songs
+    # video_IDs = youtube.get_IDs_from_playlist('PLd9auH4JIHvupoMgW5YfOjqtj6Lih0MKw')  # 80s music 426
+    write_IDs_to_file(video_IDs)
+    print(len(video_IDs))
+    video_topics = youtube.get_videos_topics(video_IDs)
+    write_topics_to_file(video_topics)
+    filtered_videos = filter_videos_by_topic(video_topics, 'music')
+    print(len(filtered_videos))
+    write_titles_to_file(filtered_videos, file_path='filtered_videos.txt')
     # z = youtube.get_topic_videos_from_playlist('LLdbdHlxCs0jEI6oPKl5um3g', 'Music')
     # for item in z:
     #     print(item)
@@ -233,5 +240,4 @@ def main():
 
 if __name__ == '__main__':
     main()
-    youtube = YoutubeAPI()
     pass
