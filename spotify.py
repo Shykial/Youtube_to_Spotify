@@ -19,6 +19,7 @@ class SpotifyAPI:
     def __init__(self):
         self.redirect_uri = 'https://i.pinimg.com/564x/0c/1c/a1/0c1ca1955e2b0c5469ba17da2b1b9b96.jpg'
         self.token = self.get_token()
+        # self.token = self.obtain_new_token()
         self.auth_header = {'Authorization': f'Bearer {self.token}'}
         self.user_id = self.get_user_id()
 
@@ -76,25 +77,25 @@ I wpisz poniżej link, do którego zostałeś przekierowany/a po zalogowaniu:
 
     def get_token(self) -> str:
         time_format = '%d-%m-%Y %H:%M:%S'
-        if input('Stworzyć nowy token? [t/n]: ')[0] not in 'ty':
-            # checking if token didn't expire already
-            try:
-                if dt.datetime.strptime(s_token_expiry_date, time_format) > dt.datetime.now():
-                    print('token nadal ważny')
-                    return s_token
-                else:
-                    print('tworzę nowy token')
-                    data = {'grant_type': 'refresh_token',
-                            'refresh_token': s_refresh_token,
-                            'client_id': s_client_ID,
-                            'client_secret': s_client_Secret}
-                    return self.request_token(data)
+        # if input('Stworzyć nowy token? [t/n]: ')[0] not in 'ty':
+        # checking if token didn't expire already
+        try:
+            if dt.datetime.strptime(s_token_expiry_date, time_format) > dt.datetime.now():
+                print('token nadal ważny')
+                return s_token
+            else:
+                print('tworzę nowy token')
+                data = {'grant_type': 'refresh_token',
+                        'refresh_token': s_refresh_token,
+                        'client_id': s_client_ID,
+                        'client_secret': s_client_Secret}
+                return self.request_token(data)
 
-                # add request obtaining new token from the refreshed one
-            except ValueError:
-                return self.obtain_new_token()
-        else:
+            # add request obtaining new token from the refreshed one
+        except ValueError:
             return self.obtain_new_token()
+        # else:
+        #     return self.obtain_new_token()
         # return token
 
     def get_user_id(self) -> str:
@@ -161,13 +162,18 @@ I wpisz poniżej link, do którego zostałeś przekierowany/a po zalogowaniu:
                         if (t := re.compile(r'\blive\b', flags=re.IGNORECASE)).search(params['q']):
                             params['q'] = t.sub('', params['q'])
                             continue
-                        items_not_found[query] = old_item
+                        items_not_found[params['q']] = old_item
                     break
                 except KeyError:
                     if r.json()['error']['message'] == 'No search query':
                         break
                     time.sleep(int(r.headers['retry-after']))
                     print(f'attempt: {attempt}')
+                    continue
+                except (ConnectionError, TimeoutError):
+                    os.system('rundll32 user32.dll,MessageBeep')
+                    os.system('rundll32 user32.dll,MessageBeep')
+                    input('Connection error, check connection and press enter to proceed')
                     continue
                 # try:
                 #     r = requests.get('https://api.spotify.com/v1/search', headers=headers, params=params)
@@ -199,7 +205,7 @@ I wpisz poniżej link, do którego zostałeś przekierowany/a po zalogowaniu:
                       'limit': limit}
             response_type = res_type + 's'
             # 5 attempts on getting proper API response as it may result in incorrect response sometimes
-            for attempt in range(1, 10):
+            for attempt in range(1, 100):
                 r = requests.get('https://api.spotify.com/v1/search', headers=headers, params=params)
                 try:
                     if returned_items := r.json()[response_type]['items']:
@@ -255,13 +261,17 @@ def get_corrected_titles(titles):
     """Using regex to filter words from the video title,
      which are most likely meaningless for the music track title itself. """
 
+    # pattern = re.compile(
+    #     r'(?:official|music|lyrics?|HD|original)\s*video | (?:with\s)?lyrics?(?:\son\s(?:the\s)?screen)? | '
+    #     r'of+icial | M[/\\]?V | \baudio\b | HQ | High\sQuality| movie\sclip |(?:480|720|1080)p | Uncensored |'
+    #     r'\bHD\b |High\sDefinition | instrumental | vevo(?:\s+ctrl|\s+DSCVR)? | \bfeat.?\b | \bft\.?\b | remix | '
+    #     r'\bedit\b | \bcover\b | \blive\b (?:\s+session|\s+performance) | (?<=\.)(?:wmv|avi|mp3|mp4) | \|.* |'
+    #     r'\bx\b | prod\.?.* |(?<=\s)& | (?<=\s)and(?=\s.*-)| (?<!\w)-(?!\w) | (?<=\s)(?:with|vs\.?)(?=\s.*-) |'
+    #     r'[12][9012]\d{2}$ | \(.*?\) | 【.*?】 | (?<!p)!(?!nk) |\[.*] |[._] | [^\w\s.\'*$\u00c0-\u017e&!-]',
+    #     flags=re.IGNORECASE | re.X | re.MULTILINE | re.UNICODE)
+
     pattern = re.compile(
-        r'(?:official|music|lyrics?|HD|original)\s*video | (?:with\s)?lyrics?(?:\son\s(?:the\s)?screen)? | '
-        r'of+icial | M[/\\]?V | \baudio\b | HQ | High\sQuality| movie clip |(?:480|720|1080)p | Uncensored |'
-        r'\bHD\b |High\sDefinition | instrumental | vevo(?:\s+ctrl|\s+DSCVR)? | \bfeat.?\b | \bft\.?\b | remix | '
-        r'\bedit\b | \bcover\b | \blive\b (?:\s+session|\s+performance) | (?<=\.)(?:wmv|avi|mp3|mp4) | \|.* |'
-        r'\bx\b | prod\.?.* |(?<=\s)& | (?<=\s)and(?=\s.*-)| (?<!\w)-(?!\w) | (?<=\s)(?:with|vs\.?)(?=\s.*-) |'
-        r'[12][9012]\d{2}$ | \(.*?\) | (?<!p)!(?!nk) |\[.*] |[._] | [^\w\s.\'*$\u00c0-\u017e&!-]',
+        r'(?:official|music|lyrics?|HD|original)\s*video | (?:with\s)?lyrics?(?:\son\s(?:the\s)?screen)? | of+icial | M[/\\]?V | \baudio\b | HQ | High\sQuality| (?:movie|promo)\sclip |(?:480|720|1080)p | 4K | Uncensored | \bU?HD\b |High\sDefinition | instrumental | vevo(?:\s+ctrl|\s+DSCVR)? | \bfeat.?\b | \bft\.?\b | remix | \bedit\b | \bcover\b | \blive\b (?:\s+session|\s+performance) | MTV(?:\sUnplugged)? |(?<=\.)(?:wmv|avi|mp3|mp4) | (?:\||(?://)).* |\bx\b | prod\.?.* |(?<=\s)& | (?<=\s)and(?=\s.*-)| (?<!\w)-(?!\w) | (?<=\s)(?:with|vs\.?)(?=\s.*-) |[12][9012]\d{2}$ | (?:\d{2}[/.-]){2}(?:[12][9012])?\d{2}(?!\d) |\(.*?\) | 【.*?】 | (?<!p)!(?!nk) |\[.*] | [._] | [^\w\s.\'*$\u00c0-\u017e&!-]',
         flags=re.IGNORECASE | re.X | re.MULTILINE | re.UNICODE)
     # 466 yo // 1000/1109 yo 1019 yo 1024 yo 1033 yo # 468/500 # 1042/1109 yo # 1069/1109
     # different playlist 449/495 # 465 # 469/495
@@ -272,6 +282,8 @@ def get_corrected_titles(titles):
     # 3350/3413 >98% !!! update 3358
     # 407/426 update 410 update 411
     # 468/487
+    # 4515/4989 update 4559 update 4678
+    # 1073/1110 96,(6)%
     new_titles = []
     for title in titles:
         new_title = pattern.sub('', title)
@@ -287,7 +299,7 @@ def get_corrected_titles(titles):
 
 if __name__ == '__main__':
     spotify = SpotifyAPI()
-    playlist_1 = spotify.create_playlist('From my liked items 2')
+    # playlist_1 = spotify.create_playlist('From my liked items 2')
     with open('filtered_videos.txt', 'r', encoding='utf-8') as f:
         items = [line.strip() for line in f]
     titles = get_corrected_titles(items)
@@ -296,7 +308,7 @@ if __name__ == '__main__':
     print(len(tracks))
     print('yoo')
     # spotify.add_tracks_to_playlist('7jL6SyXjlt1P0Rz9uDoo9o', *tracks)
-    spotify.add_tracks_to_playlist(playlist_1, *tracks)
+    # spotify.add_tracks_to_playlist(playlist_1, *tracks)
     # input('yoo')
     # spotify.clear_playlist('7jL6SyXjlt1P0Rz9uDoo9o')
     # one = spotify.search_items('Kendrick Lamar', 'Eminem', 'Rihanna', 'Kanye West', 'Mozart', 'Friderick Chopin', 'rysiek z klanu hehe xD', res_type='artist')

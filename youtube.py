@@ -36,7 +36,9 @@ def create_yt_service_instance():
     api_service_name = 'youtube'
     api_version = 'v3'
     credentials = get_yt_credentials()
-    return build(api_service_name, api_version, credentials=credentials)
+    yt = build(api_service_name, api_version, credentials=credentials)
+    print('Utożsamienie w youtube pomyślne')
+    return yt
 
 
 class YoutubeAPI:
@@ -178,7 +180,7 @@ def write_topics_to_file(video_topics: dict):
 
 def get_IDs_from_file(file_path) -> list:
     with open(file_path, 'r') as f:
-        return [line.strip() for line in f.readlines()]
+        return [line.strip() for line in f]
 
 
 def write_IDs_to_file(video_IDs, file_path='video_IDs.txt'):
@@ -212,16 +214,18 @@ def main():
     # playlist_id = input('Podaj ID playlisty: ')
 
     # video_IDs = get_IDs_from_file('videcho_IDs.txt')
-    liked_playlist = youtube.get_liked_videos_playlist_id()
+    # liked_playlist = youtube.get_liked_videos_playlist_id()
     # video_IDs = youtube.get_IDs_from_playlist('PLeCdlPO-XhWFzEVynMsmosfdRsIZXhZi0')  # 500 music videos
     # video_IDs = youtube.get_IDs_from_playlist(playlist_id)
-    # video_IDs = youtube.get_IDs_from_playlist('PL3666F5DD61E96B6D') # 1109 music videos
-    video_IDs = youtube.get_IDs_from_playlist(liked_playlist)
+    video_IDs = youtube.get_IDs_from_playlist('PL3666F5DD61E96B6D')  # 1109 music videos
+    # video_IDs = youtube.get_IDs_from_playlist(liked_playlist)
     # video_IDs = youtube.get_IDs_from_playlist('PL8cG8AVijUMg0PScFy9IcUUKxL6qW8Bfa')  # Em's songs
     # video_IDs = youtube.get_IDs_from_playlist('PLbpvZGLuRoECKlZ2i8eshh-88aEiQ63n0')  # Polish songs
     # video_IDs = youtube.get_IDs_from_playlist('PLkqz3S84Tw-RrA5S0qoVYlQ3CmwIljp3j')  # different 499 music videos
     # video_IDs = youtube.get_IDs_from_playlist('PLURwsAewiTh2Teoh_xo3so_INYL9m5Jh-')  # 1066 "upbeat songs"
     # video_IDs = youtube.get_IDs_from_playlist('PLgaFNC_I_Zkk5nCZM5RVyF0giKHfMx2Sn')  # 3413 2010 decade songs
+    # video_IDs = youtube.get_IDs_from_playlist('PL2LdWs9O2ICpu0oYkVjNio_fzoWU7mZ6v')  # Huge music playlist 3329 songs
+    # video_IDs = youtube.get_IDs_from_playlist('PLWwAypAcFRgKAIIFqBr9oy-ZYZnixa_Fj')  # 5k rock playlist 4989
     # video_IDs = youtube.get_IDs_from_playlist('PL6T-wOsBCQccPn2QSjgUSU8lKvbBv0NCN')  # Muzyka lata 2000-2010 / 1542 songs
     # video_IDs = youtube.get_IDs_from_playlist('PLd9auH4JIHvupoMgW5YfOjqtj6Lih0MKw')  # 80s music 426
     write_IDs_to_file(video_IDs)
