@@ -16,12 +16,28 @@ from decorators import timer
 
 class SpotifyAPI:
 
-    def __init__(self):
+    def __init__(self, gui=False):
+        self.gui = gui
         self.redirect_uri = 'https://i.pinimg.com/564x/0c/1c/a1/0c1ca1955e2b0c5469ba17da2b1b9b96.jpg'
-        self.token = self.get_token()
-        # self.token = self.obtain_new_token()
-        self.auth_header = {'Authorization': f'Bearer {self.token}'}
+        if not self.gui:
+            self.token = self.get_token()
+            # self.token = self.obtain_new_token()
+            self.set_auth_header()
+            self.set_user_id()
+
+    def set_user_id(self):
         self.user_id = self.get_user_id()
+
+    def set_auth_header(self):
+        self.auth_header = {'Authorization': f'Bearer {self.token}'}
+
+    def get_auth_link(self) -> str:
+        params = {'client_id': s_client_ID,
+                  'response_type': 'code',
+                  'redirect_uri': self.redirect_uri,
+                  'scope': 'user-read-private playlist-modify-private playlist-modify-public'}
+        r = requests.get('https://accounts.spotify.com/authorize', params=params)
+        return r.url
 
     def request_token(self, data) -> str:
         r = requests.post('https://accounts.spotify.com/api/token', data=data)
@@ -48,16 +64,10 @@ class SpotifyAPI:
 
         return token
 
-    def obtain_new_token(self) -> str:
-        params = {'client_id': s_client_ID,
-                  'response_type': 'code',
-                  'redirect_uri': self.redirect_uri,
-                  'scope': 'user-read-private playlist-modify-private playlist-modify-public'}
-
-        r = requests.get('https://accounts.spotify.com/authorize', params=params)
-
-        redirected_link = input(f'''Zaloguj się do aplikacji Spotify za pomocą poniższego linku:
-{r.url}
+    def obtain_new_token(self, redirected_link=None) -> str:
+        if not self.gui:
+            redirected_link = input(f'''Zaloguj się do aplikacji Spotify za pomocą poniższego linku:
+{self.get_auth_link()}
 I wpisz poniżej link, do którego zostałeś przekierowany/a po zalogowaniu:
 ''')
 
@@ -80,20 +90,22 @@ I wpisz poniżej link, do którego zostałeś przekierowany/a po zalogowaniu:
         # if input('Stworzyć nowy token? [t/n]: ')[0] not in 'ty':
         # checking if token didn't expire already
         try:
-            if dt.datetime.strptime(s_token_expiry_date, time_format) > dt.datetime.now():
+            if s_token and dt.datetime.strptime(s_token_expiry_date, time_format) > dt.datetime.now():
                 print('token nadal ważny')
                 return s_token
-            else:
+            elif s_refresh_token:
                 print('tworzę nowy token')
                 data = {'grant_type': 'refresh_token',
                         'refresh_token': s_refresh_token,
                         'client_id': s_client_ID,
                         'client_secret': s_client_Secret}
                 return self.request_token(data)
+            else:
+                raise BaseException
 
             # add request obtaining new token from the refreshed one
-        except ValueError:
-            return self.obtain_new_token()
+        except (ValueError, BaseException):
+            return self.obtain_new_token() if not self.gui else None
         # else:
         #     return self.obtain_new_token()
         # return token
@@ -102,6 +114,11 @@ I wpisz poniżej link, do którego zostałeś przekierowany/a po zalogowaniu:
         headers = self.auth_header
         r = requests.get('https://api.spotify.com/v1/me', headers=headers)
         return r.json()['id']
+
+    def get_user_name(self) -> str:
+        headers = self.auth_header
+        r = requests.get('https://api.spotify.com/v1/me', headers=headers)
+        return r.json()['display_name']
 
     def create_playlist(self, name) -> str:
         headers = {**self.auth_header,
@@ -300,6 +317,7 @@ def get_corrected_titles(titles):
 if __name__ == '__main__':
     spotify = SpotifyAPI()
     # playlist_1 = spotify.create_playlist('From my liked items 2')
+    playlist_1 = spotify.create_playlist('prysznic')
     with open('filtered_videos.txt', 'r', encoding='utf-8') as f:
         items = [line.strip() for line in f]
     titles = get_corrected_titles(items)
@@ -308,7 +326,7 @@ if __name__ == '__main__':
     print(len(tracks))
     print('yoo')
     # spotify.add_tracks_to_playlist('7jL6SyXjlt1P0Rz9uDoo9o', *tracks)
-    # spotify.add_tracks_to_playlist(playlist_1, *tracks)
+    spotify.add_tracks_to_playlist(playlist_1, *tracks)
     # input('yoo')
     # spotify.clear_playlist('7jL6SyXjlt1P0Rz9uDoo9o')
     # one = spotify.search_items('Kendrick Lamar', 'Eminem', 'Rihanna', 'Kanye West', 'Mozart', 'Friderick Chopin', 'rysiek z klanu hehe xD', res_type='artist')

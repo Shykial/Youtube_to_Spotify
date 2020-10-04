@@ -61,6 +61,11 @@ class YoutubeAPI:
         response = request.execute()
         return response['items'][0]['contentDetails']['relatedPlaylists']['likes']
 
+    def get_user_name(self) -> str:
+        request = self.yt.channels().list(part='snippet', mine=True)
+        response = request.execute()
+        return response['items'][0]['snippet']['title']
+
     def get_IDs_from_playlist(self, playlist_id) -> list:
         IDs = []
         print('Pobieranie ID filmów z playlisty', end='')
@@ -217,7 +222,8 @@ def main():
     # liked_playlist = youtube.get_liked_videos_playlist_id()
     # video_IDs = youtube.get_IDs_from_playlist('PLeCdlPO-XhWFzEVynMsmosfdRsIZXhZi0')  # 500 music videos
     # video_IDs = youtube.get_IDs_from_playlist(playlist_id)
-    video_IDs = youtube.get_IDs_from_playlist('PL3666F5DD61E96B6D')  # 1109 music videos
+    # video_IDs = youtube.get_IDs_from_playlist('PL3666F5DD61E96B6D')  # 1109 music videos
+    video_IDs = youtube.get_IDs_from_playlist('PL4hyqxN3umpYkkEEbBJCQD9vy4JLSE3-k')  # 1109 music videos
     # video_IDs = youtube.get_IDs_from_playlist(liked_playlist)
     # video_IDs = youtube.get_IDs_from_playlist('PL8cG8AVijUMg0PScFy9IcUUKxL6qW8Bfa')  # Em's songs
     # video_IDs = youtube.get_IDs_from_playlist('PLbpvZGLuRoECKlZ2i8eshh-88aEiQ63n0')  # Polish songs
