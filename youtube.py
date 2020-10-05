@@ -3,6 +3,7 @@ import json
 import google_auth_oauthlib.flow
 import pickle
 import csv
+import os
 from decorators import timer
 
 
@@ -157,6 +158,11 @@ class YoutubeAPI:
         IDs = self.get_IDs_from_playlist(playlist_id)
         videos_with_topics = self.get_videos_topics(IDs)
         return filter_videos_by_topic(videos_with_topics, topic)
+
+
+def reset_stored_token(file_path='creds.p'):
+    if os.path.exists(file_path):
+        open(file_path, 'wb').close()
 
 
 def write_titles_to_file(yt_vids, file_path='yt_vids_list.txt'):

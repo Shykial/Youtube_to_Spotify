@@ -261,6 +261,20 @@ I wpisz poniżej link, do którego zostałeś przekierowany/a po zalogowaniu:
         return list(set(items_list))  # using list -> set -> list to filter duplicate items
 
 
+def reset_stored_token():
+    with open('spotify_secrets.py', 'r') as f:
+        contents = f.read().splitlines()
+        for i, line in enumerate(contents):
+            if 's_token = ' in line:
+                contents[i] = f"s_token = ''"
+                contents[i + 1] = f"s_token_expiry_date = ''"
+                contents[i + 2] = f"s_refresh_token = ''"
+                break
+
+    with open('spotify_secrets.py', 'w') as f:
+        f.write('\n'.join(contents))
+
+
 def write_items_to_file(items, file_path):
     with open(file_path, 'w', encoding='utf-8') as f:
         for item in items:
