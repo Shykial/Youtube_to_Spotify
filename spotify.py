@@ -1,8 +1,7 @@
-import csv
-
 import requests
 import json
 import re
+import csv
 import concurrent.futures
 import datetime as dt
 import time
@@ -12,6 +11,32 @@ import os
 # from spotify_secrets import spotify_token as s_token
 from spotify_secrets import *
 from decorators import timer
+
+
+def request_token(data) -> str:
+    r = requests.post('https://accounts.spotify.com/api/token', data=data)
+    response_dict = r.json()
+    print(response_dict)
+    token = response_dict['access_token']
+
+    # new refresh_token is not given within json response when querying for a token with valid refresh_token
+    refresh_token = response_dict['refresh_token'] if 'refresh_token' in response_dict else s_refresh_token
+    token_exp_time = dt.datetime.now() + dt.timedelta(seconds=response_dict['expires_in'])
+    time_format = '%d-%m-%Y %H:%M:%S'
+
+    with open('spotify_secrets.py', 'r') as f:
+        contents = f.read().splitlines()
+        for i, line in enumerate(contents):
+            if 's_token = ' in line:
+                contents[i] = f"s_token = '{token}'"
+                contents[i + 1] = f"s_token_expiry_date = '{token_exp_time.strftime(time_format)}'"
+                contents[i + 2] = f"s_refresh_token = '{refresh_token}'"
+                break
+
+    with open('spotify_secrets.py', 'w') as f:
+        f.write('\n'.join(contents))
+
+    return token
 
 
 class SpotifyAPI:
@@ -39,31 +64,6 @@ class SpotifyAPI:
         r = requests.get('https://accounts.spotify.com/authorize', params=params)
         return r.url
 
-    def request_token(self, data) -> str:
-        r = requests.post('https://accounts.spotify.com/api/token', data=data)
-        response_dict = r.json()
-        print(response_dict)
-        token = response_dict['access_token']
-
-        # new refresh_token is not given within json response when querying for a token with valid refresh_token
-        refresh_token = response_dict['refresh_token'] if 'refresh_token' in response_dict else s_refresh_token
-        token_exp_time = dt.datetime.now() + dt.timedelta(seconds=response_dict['expires_in'])
-        time_format = '%d-%m-%Y %H:%M:%S'
-
-        with open('spotify_secrets.py', 'r') as f:
-            contents = f.read().splitlines()
-            for i, line in enumerate(contents):
-                if 's_token = ' in line:
-                    contents[i] = f"s_token = '{token}'"
-                    contents[i + 1] = f"s_token_expiry_date = '{token_exp_time.strftime(time_format)}'"
-                    contents[i + 2] = f"s_refresh_token = '{refresh_token}'"
-                    break
-
-        with open('spotify_secrets.py', 'w') as f:
-            f.write('\n'.join(contents))
-
-        return token
-
     def obtain_new_token(self, redirected_link=None) -> str:
         if not self.gui:
             redirected_link = input(f'''Zaloguj się do aplikacji Spotify za pomocą poniższego linku:
@@ -83,7 +83,7 @@ I wpisz poniżej link, do którego zostałeś przekierowany/a po zalogowaniu:
                 'redirect_uri': self.redirect_uri,
                 'client_id': s_client_ID,
                 'client_secret': s_client_Secret}
-        return self.request_token(data)
+        return request_token(data)
 
     def get_token(self) -> str:
         time_format = '%d-%m-%Y %H:%M:%S'
@@ -99,7 +99,7 @@ I wpisz poniżej link, do którego zostałeś przekierowany/a po zalogowaniu:
                         'refresh_token': s_refresh_token,
                         'client_id': s_client_ID,
                         'client_secret': s_client_Secret}
-                return self.request_token(data)
+                return request_token(data)
             else:
                 raise BaseException
 
@@ -333,9 +333,9 @@ if __name__ == '__main__':
     # playlist_1 = spotify.create_playlist('From my liked items 2')
     playlist_1 = spotify.create_playlist('prysznic')
     with open('filtered_videos.txt', 'r', encoding='utf-8') as f:
-        items = [line.strip() for line in f]
-    titles = get_corrected_titles(items)
-    tracks = spotify.search_items(titles, items)
+        old_items = [line.strip() for line in f]
+    titles = get_corrected_titles(old_items)
+    tracks = spotify.search_items(titles, old_items)
     # tracks = spotify.search_items_threading(titles, items)
     print(len(tracks))
     print('yoo')
