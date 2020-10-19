@@ -4,6 +4,7 @@ import google_auth_oauthlib.flow
 import pickle
 import csv
 import os
+import re
 from decorators import timer
 
 
@@ -42,6 +43,10 @@ def create_yt_service_instance():
     return yt
 
 
+def get_request_param_from_link(link: str, param: str) -> str:
+    return re.search(rf'(?<=[?&]{param}=)[^?]*(?=\??)', link).group()
+
+
 class YoutubeAPI:
 
     def __init__(self):
@@ -67,7 +72,16 @@ class YoutubeAPI:
         response = request.execute()
         return response['items'][0]['snippet']['title']
 
-    def get_IDs_from_playlist(self, playlist_id) -> list:
+    def get_playlist_name(self, playlist_id: str) -> str:
+        request = self.yt.playlists().list(
+            part='snippet',
+            id=playlist_id
+        )
+
+        response = request.execute()
+        return response['items'][0]['snippet']['title']
+
+    def get_IDs_from_playlist(self, playlist_id: str) -> list:
         IDs = []
         print('Pobieranie ID filmów z playlisty', end='')
 
@@ -225,12 +239,12 @@ def main():
     # playlist_id = input('Podaj ID playlisty: ')
 
     # video_IDs = get_IDs_from_file('videcho_IDs.txt')
-    # liked_playlist = youtube.get_liked_videos_playlist_id()
+    liked_playlist = youtube.get_liked_videos_playlist_id()
     # video_IDs = youtube.get_IDs_from_playlist('PLeCdlPO-XhWFzEVynMsmosfdRsIZXhZi0')  # 500 music videos
     # video_IDs = youtube.get_IDs_from_playlist(playlist_id)
     # video_IDs = youtube.get_IDs_from_playlist('PL3666F5DD61E96B6D')  # 1109 music videos
-    video_IDs = youtube.get_IDs_from_playlist('PL4hyqxN3umpYkkEEbBJCQD9vy4JLSE3-k')  # 1109 music videos
-    # video_IDs = youtube.get_IDs_from_playlist(liked_playlist)
+    # video_IDs = youtube.get_IDs_from_playlist('PL4hyqxN3umpYkkEEbBJCQD9vy4JLSE3-k')  # 1109 music videos
+    video_IDs = youtube.get_IDs_from_playlist(liked_playlist)
     # video_IDs = youtube.get_IDs_from_playlist('PL8cG8AVijUMg0PScFy9IcUUKxL6qW8Bfa')  # Em's songs
     # video_IDs = youtube.get_IDs_from_playlist('PLbpvZGLuRoECKlZ2i8eshh-88aEiQ63n0')  # Polish songs
     # video_IDs = youtube.get_IDs_from_playlist('PLkqz3S84Tw-RrA5S0qoVYlQ3CmwIljp3j')  # different 499 music videos
@@ -256,4 +270,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-    pass
