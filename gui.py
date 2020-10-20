@@ -9,6 +9,7 @@ import spotify
 import youtube
 import time
 import webbrowser
+from ttkthemes import ThemedTk
 
 
 def open_link(url: str):
@@ -31,6 +32,7 @@ def disable_widget(widget: tk.Widget):
 
 
 class GUI(tk.Tk):
+    # class GUI(ThemedTk):
 
     def resize_bg_image(self, event):
         new_size = (event.width, event.height)
@@ -46,7 +48,8 @@ class GUI(tk.Tk):
 
     def __init__(self):
         super().__init__()
-        self.wm_minsize(width=700, height=600)
+        # super().__init__(theme="ubuntu")
+        self.wm_minsize(width=750, height=600)
 
         # for item in tkinter.font.families():
         #     print(item)
@@ -111,25 +114,33 @@ class GUI(tk.Tk):
         self.logon_label.place(relx=0.5, rely=0.5, anchor='center')
 
     def init_lower_frame(self):
-
-        def disable_entry():
-            disable_widget(playlist_entry)
-            disable_widget(get_playlist_button)
+        ########################################################
+        # inner methods
+        def disable_yt_pl_entry():
+            disable_widget(yt_playlist_entry)
+            disable_widget(check_yt_playlist_button)
             playlist_entry_label.configure(foreground='grey')
-            playlist_title_label.configure(foreground='grey')
+            yt_playlist_title_label.configure(foreground='grey')
 
-        def enable_entry():
-            enable_widget(playlist_entry)
-            enable_widget(get_playlist_button)
+        def enable_yt_pl_entry():
+            enable_widget(yt_playlist_entry)
+            enable_widget(check_yt_playlist_button)
             playlist_entry_label.configure(foreground='black')
+            yt_playlist_title_label.configure(foreground='black')
 
-        def check_and_label_title(link: str):
+        def check_and_label_yt_title():
+            link = yt_playlist_entry.get()
             playlist_id = youtube.get_request_param_from_link(link, 'list')
             playlist_name = self.youtube.get_playlist_name(playlist_id)
-            playlist_title_label.configure(text=playlist_name)
+            yt_playlist_title_label.configure(text=playlist_name)
+
+        ########################################################
 
         self.lower_frame = tk.Frame(self, background=self.bg_color, highlightbackground='green', highlightthickness=6)
         self.lower_frame.place(rely=0.3, relwidth=1, relheight=0.7)
+
+        ########################################################
+        # yt playlist frame
 
         self.yt_playlist_frame = tk.Frame(self.lower_frame, background=self.bg_color, highlightbackground='black',
                                           highlightthickness=4)
@@ -141,41 +152,111 @@ class GUI(tk.Tk):
 
         liked_videos_choice_label.place(y=15, relx=0.5, anchor='center', height=30)
 
-        selected_playlist = None
+        selected_playlist = tk.StringVar()
 
         liked_videos_rb = ttk.Radiobutton(self.yt_playlist_frame, text='Moje polubione filmy',
                                           variable=selected_playlist, value='liked items',
-                                          command=disable_entry)
+                                          command=disable_yt_pl_entry)
 
         liked_videos_rb.place(in_=liked_videos_choice_label, y=50, relx=0.3, anchor='w')
 
+        self.yt_playlist_frame.update()
         other_playlist_rb = ttk.Radiobutton(self.yt_playlist_frame, text='Inna playlista',
                                             variable=selected_playlist, value='other playlist',
-                                            command=enable_entry)
-        other_playlist_rb.place(in_=liked_videos_rb, y=40, anchor='w')
+                                            command=enable_yt_pl_entry)
+        other_playlist_rb.place(in_=liked_videos_rb, y=liked_videos_rb.winfo_height() + 15, anchor='w')
 
         playlist_entry_label = tk.Label(self.yt_playlist_frame, background=self.bg_color, foreground='grey',
                                         font=('TkDefaultFont', 10), text='Podaj link do playlisty: ')
-        playlist_entry_label.place(rely=0.6, relx=0.015)
+        playlist_entry_label.place(rely=0.68, relx=0.015)
 
-        self.update()
-        playlist_entry = ttk.Entry(self.yt_playlist_frame, state='disabled')
-        playlist_entry.place(in_=playlist_entry_label, x=playlist_entry_label.winfo_width(),
-                             width=self.yt_playlist_frame.winfo_width() * 0.58)
+        self.yt_playlist_frame.update()
+        yt_playlist_entry = ttk.Entry(self.yt_playlist_frame, state='disabled')
+        yt_playlist_entry.place(in_=playlist_entry_label, x=playlist_entry_label.winfo_width(),
+                                width=self.yt_playlist_frame.winfo_width() * 0.60)
+        yt_playlist_entry.bind('<Return>', lambda e: check_and_label_yt_title())
 
-        self.update()
-        playlist_title_label = ttk.Label(self.yt_playlist_frame, style='smaller_italic.TLabel')
-        playlist_title_label.place(in_=playlist_entry, y=playlist_entry.winfo_height() + 13, relx=0.5, anchor='center')
+        self.yt_playlist_frame.update()
+        yt_playlist_title_label = ttk.Label(self.yt_playlist_frame, style='smaller_italic.TLabel')
+        yt_playlist_title_label.place(in_=yt_playlist_entry, y=yt_playlist_entry.winfo_height() + 13, relx=0.5,
+                                      anchor='center')
 
-        self.update()
-        get_playlist_button = ttk.Button(self.yt_playlist_frame, text='Sprawdź',
-                                         state='disabled', command=lambda: check_and_label_title(playlist_entry.get()))
-        get_playlist_button.place(in_=playlist_entry, x=playlist_entry.winfo_width() + 55, y=13,
-                                  anchor='center', height=29)
+        self.yt_playlist_frame.update()
+        check_yt_playlist_button = ttk.Button(self.yt_playlist_frame, text='Sprawdź',
+                                              state='disabled', command=check_and_label_yt_title)
+        check_yt_playlist_button.place(in_=yt_playlist_entry, x=yt_playlist_entry.winfo_width() + 55, y=13,
+                                       anchor='center', height=29)
+
+        ########################################################
+        # s playlist frame
+
+        def switch_enabled_entries():
+            if s_playlist_choice.get() == 'add to existing':
+                disable_widget(create_new_playlist_entry)
+                enable_widget(add_to_existing_pl_entry)
+                enable_widget(check_s_playlist_button)
+                s_playlist_title_label.configure(foreground='black')
+
+            elif s_playlist_choice.get() == 'create new':
+                disable_widget(add_to_existing_pl_entry)
+                disable_widget(check_s_playlist_button)
+                enable_widget(create_new_playlist_entry)
+                s_playlist_title_label.configure(foreground='grey')
+
+        def check_and_label_s_title():
+            link = add_to_existing_pl_entry.get()
+            playlist_id = spotify.get_playlist_id_from_link(link)
+            playlist_name = self.spotify.get_playlist_name(playlist_id)
+            s_playlist_title_label.configure(text=playlist_name)
 
         self.s_playlist_frame = tk.Frame(self.lower_frame, background=self.bg_color, highlightbackground='black',
                                          highlightthickness=4)
         self.s_playlist_frame.place(x=0, rely=0.4, relwidth=1, relheight=0.6)
+
+        destination_playlist_label = tk.Label(self.s_playlist_frame, background=self.bg_color,
+                                              font=('Calibri', 12, 'bold'),
+                                              text='Dodać utwory do istniejącej playlisty Spotify,\nczy stworzyć nową?')
+
+        destination_playlist_label.place(y=30, relx=0.5, anchor='center')
+
+        s_playlist_choice = tk.StringVar()
+
+        create_new_playlist_rb = ttk.Radiobutton(self.s_playlist_frame, text='Stwórz nową:',
+                                                 variable=s_playlist_choice, value='create new',
+                                                 command=switch_enabled_entries)
+        create_new_playlist_rb.place(y=80, relx=0.05, anchor='w')
+
+        self.s_playlist_frame.update()
+        add_to_existing_pl_rb = ttk.Radiobutton(self.s_playlist_frame, text='Dodaj do istniejącej:',
+                                                variable=s_playlist_choice, value='add to existing',
+                                                command=switch_enabled_entries)
+        add_to_existing_pl_rb.place(in_=create_new_playlist_rb,
+                                    y=create_new_playlist_rb.winfo_height() + 20, anchor='w')
+
+        self.s_playlist_frame.update()
+
+        create_new_playlist_entry = ttk.Entry(self.s_playlist_frame, state='disabled')
+        create_new_playlist_entry.place(in_=create_new_playlist_rb, x=add_to_existing_pl_rb.winfo_width() + 15,
+                                        width=self.s_playlist_frame.winfo_width() * 0.52)
+
+        self.s_playlist_frame.update()
+
+        self.s_playlist_frame.update()
+        add_to_existing_pl_entry = ttk.Entry(self.s_playlist_frame, state='disabled')
+        add_to_existing_pl_entry.place(in_=add_to_existing_pl_rb, x=add_to_existing_pl_rb.winfo_width() + 15,
+                                       width=self.s_playlist_frame.winfo_width() * 0.52)
+        add_to_existing_pl_entry.bind('<Return>', lambda e: check_and_label_s_title())
+
+        self.s_playlist_frame.update()
+        check_s_playlist_button = ttk.Button(self.s_playlist_frame, text='Sprawdź',
+                                             state='disabled', command=check_and_label_s_title)
+        check_s_playlist_button.place(in_=add_to_existing_pl_entry, x=add_to_existing_pl_entry.winfo_width() + 55,
+                                      y=13, anchor='center', height=29)
+
+        s_playlist_title_label = ttk.Label(self.s_playlist_frame, style='smaller_italic.TLabel')
+        s_playlist_title_label.place(in_=add_to_existing_pl_entry, y=add_to_existing_pl_entry.winfo_height() + 11,
+                                     relx=0.5, anchor='center')
+
 
     def init_auth_buttons(self):
         self.spotify_logo = tk.PhotoImage(file='images/spotify_icon.png')
@@ -231,8 +312,9 @@ class GUI(tk.Tk):
                                          font='Arial 11', foreground='red')
                 success_label.place(relx=0.5, y=15, anchor='center')
                 auth_window.after(1500, lambda: quit_and_destroy(auth_window))
-                self.after(1400,
-                           self.focus_set)  # bringing back focus to the main window just before auth window gets destroyed
+
+                # bringing back focus to the main window just before auth window gets destroyed
+                self.after(1400, self.focus_set)
 
         try:
             self.spotify = spotify.SpotifyAPI(gui=True)
