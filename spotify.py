@@ -39,6 +39,11 @@ def request_token(data) -> str:
     return token
 
 
+def get_playlist_id_from_link(link: str) -> str:
+    if 'playlist' in (t := link.split('/')):
+        return t[-1]
+
+
 class SpotifyAPI:
 
     def __init__(self, gui=False):
@@ -119,6 +124,11 @@ I wpisz poniżej link, do którego zostałeś przekierowany/a po zalogowaniu:
         headers = self.auth_header
         r = requests.get('https://api.spotify.com/v1/me', headers=headers)
         return r.json()['display_name']
+
+    def get_playlist_name(self, playlist_id: str) -> str:
+        headers = self.auth_header
+        r = requests.get(f'https://api.spotify.com/v1/playlists/{playlist_id}', headers=headers)
+        return r.json()['name']
 
     def create_playlist(self, name) -> str:
         headers = {**self.auth_header,
