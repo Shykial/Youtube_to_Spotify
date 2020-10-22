@@ -1,16 +1,17 @@
-import requests
-import json
-import re
-import csv
 import concurrent.futures
+import csv
 import datetime as dt
-import time
+import json
 import os
+import re
+import time
 
+import requests
+
+from decorators import timer
 # from spotify_secrets import spotify_client_ID as s_client_ID, spotify_client_Secret as s_client_Secret
 # from spotify_secrets import spotify_token as s_token
 from spotify_secrets import *
-from decorators import timer
 
 
 def request_token(data) -> str:
@@ -42,6 +43,7 @@ def request_token(data) -> str:
 def get_playlist_id_from_link(link: str) -> str:
     if 'playlist' in (t := link.split('/')):
         return t[-1]
+    raise AttributeError
 
 
 class SpotifyAPI:
