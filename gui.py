@@ -278,9 +278,9 @@ class GUI(tk.Tk):
             return
 
         try:
-            spotify_plalist_id = self.spotify.create_playlist(self.s_existing_playlist_entry.get()) \
+            spotify_plalist_id = self.spotify.create_playlist(self.s_new_playlist_entry.get()) \
                 if self.s_playlist_choice == 'new playlist' else \
-                spotify.get_playlist_id_from_link(self.s_new_playlist_entry.get())
+                spotify.get_playlist_id_from_link(self.s_existing_playlist_entry.get())
             print(spotify_plalist_id)
         except AttributeError:
             print('spotify playlist error')
@@ -317,7 +317,6 @@ class GUI(tk.Tk):
             # self.logon_label.destroy()
             # self.tick_label = tk.label
             self.logon_label.config(image=self.tick_image, width=75, height=75)
-            self.init_lower_frame()
             self.after(1500, self.logon_label.destroy)
 
     def spotify_init(self):
