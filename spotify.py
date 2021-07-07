@@ -9,8 +9,6 @@ import time
 import requests
 
 from decorators import timer
-# from spotify_secrets import spotify_client_ID as s_client_ID, spotify_client_Secret as s_client_Secret
-# from spotify_secrets import spotify_token as s_token
 from spotify_secrets import *
 
 
@@ -80,11 +78,6 @@ I wpisz poniżej link, do którego zostałeś przekierowany/a po zalogowaniu:
 
         auth_code = redirected_link.split('code=')[-1]
 
-        # client_creds = f'{s_client_ID}:{s_client_Secret}'.encode()
-        # client_creds_b64 = base64.b64encode(client_creds).decode()
-
-        # headers = {'Authorization': f'Basic {client_creds_b64}'}
-
         data = {'grant_type': 'authorization_code',
                 'code': auth_code,
                 'redirect_uri': self.redirect_uri,
@@ -113,9 +106,6 @@ I wpisz poniżej link, do którego zostałeś przekierowany/a po zalogowaniu:
             # add request obtaining new token from the refreshed one
         except (ValueError, BaseException):
             return self.obtain_new_token() if not self.gui else None
-        # else:
-        #     return self.obtain_new_token()
-        # return token
 
     def get_user_id(self) -> str:
         headers = self.auth_header
@@ -141,7 +131,6 @@ I wpisz poniżej link, do którego zostałeś przekierowany/a po zalogowaniu:
         data = json.dumps(payload)
 
         r = requests.post(f'https://api.spotify.com/v1/users/{self.user_id}/playlists', headers=headers, data=data)
-        # print(r.text)
         return r.json()['id']
 
     def add_tracks_to_playlist(self, playlist_id, *items):
@@ -166,7 +155,7 @@ I wpisz poniżej link, do którego zostałeś przekierowany/a po zalogowaniu:
 
     @timer
     def search_items(self, search_queries, old_items, res_type='track',
-                     limit=1) -> list:  # returns list of objects URIs todo delete old items when no longer needed
+                     limit=1) -> set:  # returns list of objects URIs todo delete old items when no longer needed
         headers = self.auth_header
         items_list = []
         items_not_found = {}
@@ -204,24 +193,15 @@ I wpisz poniżej link, do którego zostałeś przekierowany/a po zalogowaniu:
                     os.system('rundll32 user32.dll,MessageBeep')
                     input('Connection error, check connection and press enter to proceed')
                     continue
-                # try:
-                #     r = requests.get('https://api.spotify.com/v1/search', headers=headers, params=params)
-                #     returned_items = r.json()[response_type]['items']
-                #     if returned_items:
-                #         items_list.append(returned_items[0]['uri'])
-                # except KeyError:
-                #     r = requests.get('https://api.spotify.com/v1/search', headers=headers, params=params)
-                #     returned_items = r.json()[response_type]['items']
-                #     if returned_items:
-                #         items_list.append(returned_items[0]['uri'])
+
             counter += 1
         write_dict_items_to_file(items_not_found, 'titles_not_found.tsv')
         print(f'With potential duplicates: {len(items_list)}')
-        return list(set(items_list))  # using list -> set -> list to filter duplicate items
+        return set(items_list)  # using list -> set to filter duplicate items
 
     @timer
     def search_items_threading(self, search_queries, old_items, res_type='track',
-                               limit=1) -> list:  # returns list of objects URIs
+                               limit=1) -> set:  # returns list of objects URIs
         headers = self.auth_header
         items_list = []
         items_not_found = {}
@@ -240,11 +220,6 @@ I wpisz poniżej link, do którego zostałeś przekierowany/a po zalogowaniu:
                     if returned_items := r.json()[response_type]['items']:
                         items_list.append(returned_items[0]['uri'])
                     else:
-                        # pattern = re.compile(r'ft\.?|feat.?', flags=re.IGNORECASE)
-                        # if pattern.search(params['q']):
-                        #     params['q'] = pattern.sub('', params['q'])
-                        #     continue
-                        # items_not_found.append(query)
                         items_not_found[query] = old_item
                     break
                 except KeyError:
@@ -253,16 +228,7 @@ I wpisz poniżej link, do którego zostałeś przekierowany/a po zalogowaniu:
                     time.sleep(int(r.headers['retry-after']))
                     print(f'attempt: {attempt}')
                     continue
-                # try:
-                #     r = requests.get('https://api.spotify.com/v1/search', headers=headers, params=params)
-                #     returned_items = r.json()[response_type]['items']
-                #     if returned_items:
-                #         items_list.append(returned_items[0]['uri'])
-                # except KeyError:
-                #     r = requests.get('https://api.spotify.com/v1/search', headers=headers, params=params)
-                #     returned_items = r.json()[response_type]['items']
-                #     if returned_items:
-                #         items_list.append(returned_items[0]['uri'])
+
             self.counter += 1
 
         with concurrent.futures.ThreadPoolExecutor() as executor:
@@ -270,7 +236,7 @@ I wpisz poniżej link, do którego zostałeś przekierowany/a po zalogowaniu:
                 time.sleep(0.07)
                 executor.submit(inner, query, old_item)
         print(f'With potential duplicates: {len(items_list)}')
-        return list(set(items_list))  # using list -> set -> list to filter duplicate items
+        return set(items_list)  # using list -> set to filter duplicate items
 
 
 def reset_stored_token():
@@ -304,28 +270,16 @@ def get_corrected_titles(titles):
     """Using regex to filter words from the video title,
      which are most likely meaningless for the music track title itself. """
 
-    # pattern = re.compile(
-    #     r'(?:official|music|lyrics?|HD|original)\s*video | (?:with\s)?lyrics?(?:\son\s(?:the\s)?screen)? | '
-    #     r'of+icial | M[/\\]?V | \baudio\b | HQ | High\sQuality| movie\sclip |(?:480|720|1080)p | Uncensored |'
-    #     r'\bHD\b |High\sDefinition | instrumental | vevo(?:\s+ctrl|\s+DSCVR)? | \bfeat.?\b | \bft\.?\b | remix | '
-    #     r'\bedit\b | \bcover\b | \blive\b (?:\s+session|\s+performance) | (?<=\.)(?:wmv|avi|mp3|mp4) | \|.* |'
-    #     r'\bx\b | prod\.?.* |(?<=\s)& | (?<=\s)and(?=\s.*-)| (?<!\w)-(?!\w) | (?<=\s)(?:with|vs\.?)(?=\s.*-) |'
-    #     r'[12][9012]\d{2}$ | \(.*?\) | 【.*?】 | (?<!p)!(?!nk) |\[.*] |[._] | [^\w\s.\'*$\u00c0-\u017e&!-]',
-    #     flags=re.IGNORECASE | re.X | re.MULTILINE | re.UNICODE)
-
     pattern = re.compile(
-        r'(?:official|music|lyrics?|HD|original)\s*video | (?:with\s)?lyrics?(?:\son\s(?:the\s)?screen)? | of+icial | M[/\\]?V | \baudio\b | HQ | High\sQuality| (?:movie|promo)\sclip |(?:480|720|1080)p | 4K | Uncensored | \bU?HD\b |High\sDefinition | instrumental | vevo(?:\s+ctrl|\s+DSCVR)? | \bfeat.?\b | \bft\.?\b | remix | \bedit\b | \bcover\b | \blive\b (?:\s+session|\s+performance) | MTV(?:\sUnplugged)? |(?<=\.)(?:wmv|avi|mp3|mp4) | (?:\||(?://)).* |\bx\b | prod\.?.* |(?<=\s)& | (?<=\s)and(?=\s.*-)| (?<!\w)-(?!\w) | (?<=\s)(?:with|vs\.?)(?=\s.*-) |[12][9012]\d{2}$ | (?:\d{2}[/.-]){2}(?:[12][9012])?\d{2}(?!\d) |\(.*?\) | 【.*?】 | (?<!p)!(?!nk) |\[.*] | [._] | [^\w\s.\'*$\u00c0-\u017e&!-]',
+        r'(?:official|music|lyrics?|HD|original)\s*video | (?:with\s)?lyrics?(?:\son\s(?:the\s)?screen)? | of+icial | '
+        r'M[/\\]?V | \baudio\b | HQ | High\sQuality| (?:movie|promo)\sclip |(?:480|720|1080)p | 4K | Uncensored | '
+        r'\bU?HD\b |High\sDefinition | instrumental | vevo(?:\s+ctrl|\s+DSCVR)? | \bfeat.?\b | \bft\.?\b | remix | '
+        r'\bedit\b | \bcover\b | \blive\b (?:\s+session|\s+performance) | MTV(?:\sUnplugged)? |(?<=\.)('
+        r'?:wmv|avi|mp3|mp4) | (?:\||(?://)).* |\bx\b | prod\.?.* |(?<=\s)& | (?<=\s)and(?=\s.*-)| (?<!\w)-(?!\w) | ('
+        r'?<=\s)(?:with|vs\.?)(?=\s.*-) |[12][9012]\d{2}$ | (?:\d{2}[/.-]){2}(?:[12][9012])?\d{2}(?!\d) |\(.*?\) | '
+        r'【.*?】 | (?<!p)!(?!nk) |\[.*] | [._] | [^\w\s.\'*$\u00c0-\u017e&!-]',
         flags=re.IGNORECASE | re.X | re.MULTILINE | re.UNICODE)
-    # 466 yo // 1000/1109 yo 1019 yo 1024 yo 1033 yo # 468/500 # 1042/1109 yo # 1069/1109
-    # different playlist 449/495 # 465 # 469/495
-    # 469/500
-    # 664/696
-    # 1021/1058 update 1023/1058
-    # 465/487
-    # 3350/3413 >98% !!! update 3358
-    # 407/426 update 410 update 411
-    # 468/487
-    # 4515/4989 update 4559 update 4678
+
     # 1073/1110 96,(6)%
     new_titles = []
     for title in titles:
@@ -335,25 +289,6 @@ def get_corrected_titles(titles):
 
     return new_titles
 
-    # return [re.sub(re.compile(r'\s{2,}'), ' ', pattern.sub('', title)) for title in titles]
-
-    # print(new_string)
-
 
 if __name__ == '__main__':
     spotify = SpotifyAPI()
-    # playlist_1 = spotify.create_playlist('From my liked items 2')
-    playlist_1 = spotify.create_playlist('prysznic')
-    with open('filtered_videos.txt', 'r', encoding='utf-8') as f:
-        old_items = [line.strip() for line in f]
-    titles = get_corrected_titles(old_items)
-    tracks = spotify.search_items(titles, old_items)
-    # tracks = spotify.search_items_threading(titles, items)
-    print(len(tracks))
-    print('yoo')
-    # spotify.add_tracks_to_playlist('7jL6SyXjlt1P0Rz9uDoo9o', *tracks)
-    spotify.add_tracks_to_playlist(playlist_1, *tracks)
-    # input('yoo')
-    # spotify.clear_playlist('7jL6SyXjlt1P0Rz9uDoo9o')
-    # one = spotify.search_items('Kendrick Lamar', 'Eminem', 'Rihanna', 'Kanye West', 'Mozart', 'Friderick Chopin', 'rysiek z klanu hehe xD', res_type='artist')
-    os.system('rundll32 user32.dll,MessageBeep')
